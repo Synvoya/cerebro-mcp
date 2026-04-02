@@ -98,6 +98,16 @@ echo ""
 
 echo "\$EXIT_CODE" > "${exitFile}"
 
+# Auto-open HTML files in browser if task succeeded
+if [ \$EXIT_CODE -eq 0 ]; then
+  HTML_FILE=$(find "${cwd}" -maxdepth 2 -name "*.html" -newer "${exitFile}" -o -name "*.html" 2>/dev/null | head -1)
+  if [ -n "\$HTML_FILE" ]; then
+    echo ""
+    echo "  🌐 Opening \$HTML_FILE in browser..."
+    open "\$HTML_FILE" 2>/dev/null || xdg-open "\$HTML_FILE" 2>/dev/null
+  fi
+fi
+
 # Keep window open for user to read
 echo "  Press Enter to close this window..."
 read
