@@ -139,7 +139,8 @@ export function resolveProvider(taskCategory?: string): CliProvider {
 
   const lower = taskCategory.toLowerCase();
   for (const rule of routingRules) {
-    if (lower.includes(rule.taskCategory.toLowerCase())) {
+    const ruleLC = rule.taskCategory.toLowerCase();
+    if (lower.includes(ruleLC) || ruleLC.includes(lower)) {
       return rule.provider;
     }
   }

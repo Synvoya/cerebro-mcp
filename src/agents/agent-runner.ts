@@ -30,7 +30,7 @@ export async function runAgentTask(
   }
 ): Promise<TaskResult> {
   // Resolve configuration (per-task > per-agent > per-provider > defaults)
-  const provider = options?.provider || resolveProvider(taskDescription) || "claude-code";
+  const provider = options?.provider || resolveProvider(agent.name) || resolveProvider(agent.description) || resolveProvider(taskDescription) || "claude-code";
   const model = resolveModel(provider, agent.agentId, options?.model);
   const effort = options?.effort || resolveEffort(provider, agent.agentId);
   const mode = options?.mode || resolveSpawnMode();
