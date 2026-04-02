@@ -1,0 +1,39 @@
+{
+  "name": "@synvoya/cerebro-mcp",
+  "version": "0.1.0",
+  "description": "Universal AI orchestrator — MCP for tools, A2A for agents. Chat thinks, agents specialize, CLI codes.",
+  "type": "module",
+  "bin": {
+    "cerebro-mcp": "./build/index.js"
+  },
+  "files": ["build", "agents", "starter-kits"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node build/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "keywords": ["mcp", "a2a", "ai", "orchestrator", "claude", "agent", "swarm", "model-context-protocol", "agent2agent"],
+  "author": "Synvoya",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/Synvoya/cerebro-mcp.git" },
+  "homepage": "https://cerebro.synvoya.com",
+  "bugs": { "url": "https://github.com/Synvoya/cerebro-mcp/issues" },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^11.8.1",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.17",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.1"
+  }
+}

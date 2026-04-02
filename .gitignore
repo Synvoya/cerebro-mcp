@@ -1,0 +1,8 @@
+node_modules/
+build/
+dist/
+*.db
+.cerebro/handover.json
+.env
+*.tgz
+coverage/

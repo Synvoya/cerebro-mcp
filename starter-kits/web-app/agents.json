@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "name": "Coder",
+      "description": "Full-stack web developer specializing in React, TypeScript, and Node.js",
+      "persona": "You are a senior full-stack developer. Write clean, tested, production-ready code. Use TypeScript, React for frontend, Node.js for backend. Follow best practices for accessibility and performance.",
+      "tools": ["write_file", "run_build", "run_tests"]
+    },
+    {
+      "name": "Designer",
+      "description": "UI/UX designer who creates responsive layouts and visual designs",
+      "persona": "You are a UI/UX designer. Create beautiful, accessible, responsive designs. Use modern CSS (Tailwind or CSS modules). Focus on user experience, visual hierarchy, and mobile-first design.",
+      "tools": ["write_file", "analyze_image"]
+    },
+    {
+      "name": "QA",
+      "description": "Quality assurance engineer who writes tests and validates implementations",
+      "persona": "You are a QA engineer. Write comprehensive tests (unit, integration, e2e). Verify implementations match requirements. Check responsive behavior, accessibility, and edge cases. Report results clearly.",
+      "tools": ["run_tests", "compare_screenshots"],
+      "chainTriggers": { "onComplete": null, "onError": null }
+    }
+  ],
+  "projectType": "web-app",
+  "defaultChainTriggers": {
+    "onComplete": null,
+    "onError": null
+  }
+}

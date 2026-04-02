@@ -1,0 +1,20 @@
+{
+  "name": "cerebro-mcp",
+  "display_name": "Cerebro MCP",
+  "description": "Universal AI orchestrator — MCP for tools, A2A for agents. Chat thinks, agents specialize, CLI codes. Non-coder first.",
+  "version": "0.1.0",
+  "author": "Synvoya",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/Synvoya/cerebro-mcp",
+  "homepage": "https://cerebro.synvoya.com",
+  "categories": ["orchestration", "agents", "development", "automation"],
+  "tags": ["mcp", "a2a", "orchestrator", "agent-swarm", "non-coder", "claude", "ai"],
+  "install": {
+    "npm": "@synvoya/cerebro-mcp"
+  },
+  "runtime": {
+    "node": ">=18.0.0"
+  },
+  "transport": ["stdio"],
+  "tools": 24
+}
