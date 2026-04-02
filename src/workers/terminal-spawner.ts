@@ -251,9 +251,9 @@ function buildCliCommand(
     }
 
     case "codex": {
-      const args: string[] = [];
+      const args: string[] = ["exec"];
       if (model) args.push("--model", model);
-      if (effort) args.push("--effort", effort);
+      args.push("--full-auto");
       args.push(`'${safeTask}'`);
       return `codex ${args.join(" ")}`;
     }
