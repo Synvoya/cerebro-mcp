@@ -245,14 +245,28 @@ function buildCliCommand(
   switch (provider) {
     case "claude-code": {
       const args: string[] = [];
-      if (model) args.push("--model", model);
+      // Only pass --model if it's NOT an Anthropic model (Codex only understands OpenAI models)
+      const isAnthropicModel = model && (
+        model.toLowerCase().includes("sonnet") ||
+        model.toLowerCase().includes("opus") ||
+        model.toLowerCase().includes("haiku") ||
+        model.toLowerCase().includes("claude")
+      );
+      if (model && !isAnthropicModel) args.push("--model", model);
       args.push("--dangerously-skip-permissions", "--print", `'${safeTask}'`);
       return `claude ${args.join(" ")}`;
     }
 
     case "codex": {
       const args: string[] = ["exec"];
-      if (model) args.push("--model", model);
+      // Only pass --model if it's NOT an Anthropic model (Codex only understands OpenAI models)
+      const isAnthropicModel = model && (
+        model.toLowerCase().includes("sonnet") ||
+        model.toLowerCase().includes("opus") ||
+        model.toLowerCase().includes("haiku") ||
+        model.toLowerCase().includes("claude")
+      );
+      if (model && !isAnthropicModel) args.push("--model", model);
       args.push("--full-auto");
       args.push(`'${safeTask}'`);
       return `codex ${args.join(" ")}`;
