@@ -56,12 +56,12 @@ Then add to your Claude Desktop config (`claude_desktop_config.json`):
 }
 ```
 
-Restart Claude Desktop. Cerebro's 24 tools are now available in Chat.
+Restart Claude Desktop. Cerebro's 28 tools are now available in Chat.
 
 ## What Makes Cerebro Different
 
-| | Remote Control | Other Orchestrators | **Cerebro MCP** |
-|---|---|---|---|
+|  | Remote Control | Other Orchestrators | **Cerebro MCP** |
+| --- | --- | --- | --- |
 | **For** | Developers | Developers | **Non-coders** |
 | **Direction** | User → CLI | Dev → agents | **Chat → everything** |
 | **Protocols** | MCP only | Custom | **MCP + A2A** |
@@ -69,6 +69,7 @@ Restart Claude Desktop. Cerebro's 24 tools are now available in Chat.
 | **Context rot** | Not addressed | Manual clear | **Fresh per task** |
 | **External agents** | N/A | N/A | **Any A2A agent joins** |
 | **Session continuity** | Single session | N/A | **Signed tokens** |
+| **CLI providers** | Claude Code only | Single provider | **Multi-provider** |
 
 ## Architecture
 
@@ -123,6 +124,25 @@ Agents persist across sessions. They learn your preferences. They delegate to ea
 
 Every agent call gets a fresh context window. Agent definitions and learned preferences persist, but working context is wiped after each task. No stale reasoning accumulates. Ever.
 
+### Multi-Provider CLI — Choose Your Tools
+
+Cerebro isn't locked to a single CLI. Route different task types to different providers using natural language.
+
+```
+You: "Use Claude Code for coding tasks and Codex for code review"
+Cerebro: Worker routing updated.
+  → Coding tasks → Claude Code CLI
+  → Code review → OpenAI Codex CLI
+
+You: "What CLI tools do I have installed?"
+Cerebro: Detected providers:
+  ✓ Claude Code CLI (authenticated)
+  ✓ Codex CLI v0.118.0 (authenticated)
+  ✗ Aider (not installed)
+```
+
+Supported providers: **Claude Code**, **OpenAI Codex**, **Aider**, and any generic shell command. Cerebro auto-detects installed tools and intelligently routes tasks based on agent name, description, and routing rules.
+
 ### A2A Interop — Your Swarm Has No Walls
 
 Every Cerebro agent is automatically A2A-compliant. They publish Agent Cards at `/.well-known/agent-card.json`. External A2A agents from Salesforce, SAP, LangChain, CrewAI — anything A2A-compliant — can join your swarm.
@@ -157,7 +177,7 @@ Real-time agent status with heartbeats, task broadcasting, and conversation thre
 
 Paste a screenshot, mockup, or error message. Cerebro interprets it via Claude Vision and converts it into actionable CLI instructions.
 
-## 24 MCP Tools
+## 28 MCP Tools
 
 **Session:** `create_session` · `resume_session` · `pause_session` · `end_session` · `list_sessions`
 
@@ -165,9 +185,42 @@ Paste a screenshot, mockup, or error message. Cerebro interprets it via Claude V
 
 **Agents:** `create_agent` · `list_agents` · `update_agent` · `remove_agent` · `get_agent_status` · `install_agent_pack` · `delegate_to_agent`
 
+**Workers:** `configure_workers` · `detect_providers` · `configure_model`
+
 **Vision:** `analyze_image` · `implement_from_image` · `compare_screenshots`
 
 **Handover:** `prepare_handover` · `validate_token` · `get_context_health`
+
+## CLI Provider Setup
+
+### Claude Code (recommended)
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude-code auth
+```
+
+### OpenAI Codex
+
+```bash
+npm install -g @openai/codex
+codex auth
+```
+
+Then in Chat:
+
+```
+You: "Use Codex for code review tasks"
+Cerebro: Routing updated — code review tasks → Codex CLI.
+```
+
+### Aider
+
+```bash
+pip install aider-chat
+```
+
+Cerebro auto-detects all installed providers via `detect_providers`.
 
 ## Project Structure
 
@@ -175,10 +228,11 @@ Paste a screenshot, mockup, or error message. Cerebro interprets it via Claude V
 cerebro-mcp/
 ├── src/
 │   ├── index.ts              # Entry point
-│   ├── server.ts             # 24 MCP tools registered
+│   ├── server.ts             # 28 MCP tools registered
 │   ├── session/              # Session lifecycle + SQLite store
 │   ├── router/               # Task routing + decomposition
-│   ├── workers/              # CLI, Cowork (V2), MCP relay
+│   ├── workers/              # CLI providers, terminal spawner,
+│   │                         # model config, Cowork (V2), MCP relay
 │   ├── agents/               # Swarm, runner, confidence, delegation,
 │   │                         # memory, marketplace, heartbeat, threading
 │   ├── a2a/                  # A2A server, client, Agent Cards, lifecycle
@@ -204,7 +258,7 @@ npm test
 
 ## Roadmap
 
-- [x] MCP server with 24 tools
+- [x] MCP server with 28 tools
 - [x] Session management with signed tokens
 - [x] Agent swarm with conversation-based CRUD
 - [x] A2A protocol for agent-to-agent communication
@@ -213,7 +267,10 @@ npm test
 - [x] Message threading between agents
 - [x] Auto-registration via `.cerebro/agents.json`
 - [x] Starter kits (web-app, api-service, content-site)
-- [ ] Claude Code CLI integration (subprocess management)
+- [x] Claude Code CLI integration (subprocess management)
+- [x] Multi-provider CLI (Claude Code, Codex, Aider, generic shell)
+- [x] Visible terminal spawner (branded agent windows)
+- [x] Model and effort configuration via natural language
 - [ ] Cowork integration (pending Anthropic API)
 - [ ] Agent dashboard web UI
 - [ ] Remote CLI workers (VPS/cloud)
