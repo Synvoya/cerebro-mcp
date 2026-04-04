@@ -27,6 +27,7 @@ export async function runAgentTask(
     effort?: string;
     mode?: "visible" | "background";
     provider?: CliProvider;
+    autoCloseTerminal?: boolean;
   }
 ): Promise<TaskResult> {
   // Resolve configuration (per-task > per-agent > per-provider > defaults)
@@ -61,6 +62,7 @@ export async function runAgentTask(
       mode,
       model,
       effort,
+      autoCloseTerminal: options?.autoCloseTerminal,
     });
 
     // Update task state based on result

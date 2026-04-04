@@ -296,8 +296,9 @@ export function createCerebroServer(): McpServer {
       projectPath: z.string().optional().describe("Where to save files (e.g., ~/Projects/my-app). If omitted, Cerebro will use a default."),
       provider: z.string().optional().describe("CLI provider to use: 'claude-code', 'codex', 'aider'. Defaults to claude-code."),
       model: z.string().optional().describe("Model to use: 'sonnet', 'opus', 'haiku'. Defaults to sonnet."),
+      autoCloseTerminal: z.boolean().optional().describe("If true, terminal window closes automatically after task completes. Default: false (stays open for review)."),
     },
-    async ({ task, projectPath, provider, model }) => {
+    async ({ task, projectPath, provider, model, autoCloseTerminal }) => {
       const { homedir } = await import("node:os");
       const { existsSync, mkdirSync } = await import("node:fs");
       const { runAgentTask } = await import("./agents/agent-runner.js");
@@ -372,7 +373,7 @@ export function createCerebroServer(): McpServer {
         session.id,
         task,
         resolvedPath,
-        { provider: resolvedProvider as any, model: resolvedModel, mode: resolveSpawnMode() }
+        { provider: resolvedProvider as any, model: resolvedModel, mode: resolveSpawnMode(), autoCloseTerminal }
       );
 
       return {
@@ -784,8 +785,9 @@ export function createCerebroServer(): McpServer {
       sessionId: z.string().describe("Session ID"),
       agentId: z.string().describe("Target agent ID"),
       task: z.string().describe("Task description"),
+      autoCloseTerminal: z.boolean().optional().describe("If true, terminal window closes automatically after task completes. Default: false (stays open for review)."),
     },
-    async ({ sessionId, agentId, task }) => {
+    async ({ sessionId, agentId, task, autoCloseTerminal }) => {
       const { getAgent } = await import("./session/store.js");
       const agent = getAgent(agentId);
       if (!agent) {
@@ -810,9 +812,15 @@ export function createCerebroServer(): McpServer {
       const delegateSession = getSession(sessionId);
       const projectPath = delegateSession?.projectPath || process.cwd();
 
+      // Resolve provider + model for visibility
+      const { resolveProvider } = await import("./workers/pool.js");
+      const { resolveModel } = await import("./workers/model-config.js");
+      const provider = resolveProvider(agent.name) || resolveProvider(agent.description) || "claude-code";
+      const model = resolveModel(provider, agentId);
+
       // Execute the task — spawns a visible Terminal window
       const { runAgentTask } = await import("./agents/agent-runner.js");
-      const result = await runAgentTask(agent, taskId, sessionId, task, projectPath);
+      const result = await runAgentTask(agent, taskId, sessionId, task, projectPath, { autoCloseTerminal });
 
       return {
         content: [
@@ -822,6 +830,8 @@ export function createCerebroServer(): McpServer {
               {
                 taskId,
                 delegatedTo: agent.name,
+                provider: provider || "claude-code",
+                model: model || "sonnet",
                 state: result.success ? "completed" : "failed",
                 success: result.success,
                 output: result.output?.slice(0, 2000),

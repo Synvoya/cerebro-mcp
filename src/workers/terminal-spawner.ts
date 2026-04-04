@@ -24,6 +24,7 @@ interface TerminalSpawnOptions {
   model?: string;
   effort?: string;
   customCommand?: string;
+  autoCloseTerminal?: boolean;
 }
 
 const CEREBRO_TMP = join(tmpdir(), "cerebro-workers");
@@ -108,9 +109,7 @@ if [ \$EXIT_CODE -eq 0 ]; then
   fi
 fi
 
-# Keep window open for user to read
-echo "  Terminal will stay open for review."
-echo "  Close this window when done."
+${options.autoCloseTerminal ? '# Auto-closing terminal\nexit 0' : '# Keep window open for user to read\necho "  Terminal will stay open for review."\necho "  Close this window when done."'}
 `;
 
   writeFileSync(scriptFile, script, { mode: 0o755 });
