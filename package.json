@@ -1,6 +1,6 @@
 {
   "name": "@synvoya/cerebro-mcp",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "description": "Universal AI orchestrator — MCP for tools, A2A for agents. Chat thinks, agents specialize, CLI codes.",
   "type": "module",
   "bin": {

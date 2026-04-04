@@ -69,9 +69,16 @@ echo "  🧠 Cerebro MCP — Worker Terminal"
 echo "  ─────────────────────────────────────────"
 echo "  Agent:    ${agentName}"
 echo "  Provider: ${provider}"
-${model ? `echo "  Model:    ${model}"` : ""}
+${(() => {
+  if (provider === "codex") {
+    const isAnthropicModel = model && (model.toLowerCase().includes("sonnet") || model.toLowerCase().includes("opus") || model.toLowerCase().includes("haiku") || model.toLowerCase().includes("claude"));
+    if (!model || isAnthropicModel) return 'echo "  Model:    gpt-5.4 (Codex default)"';
+    return `echo "  Model:    ${model}"`;
+  }
+  return model ? `echo "  Model:    ${model}"` : '';
+})()}
 ${effort ? `echo "  Effort:   ${effort}"` : ""}
-echo "  Task:     ${taskDescription.replace(/"/g, '\\"').slice(0, 200)}"
+echo "  Task:     ${taskDescription.replace(/"/g, '\\"').slice(0, 1000)}"
 echo "  ─────────────────────────────────────────"
 echo ""
 echo "  Working directory: ${cwd}"
@@ -80,6 +87,12 @@ echo "  \$ ${cliCommand.replace(/"/g, '\\"').slice(0, 300)}"
 echo ""
 echo "  ─────────────────────────────────────────"
 echo ""
+
+# Auto-init git for Codex (requires git repo)
+if [ ! -d "${cwd}/.git" ] && [ "${provider}" = "codex" ]; then
+  cd "${cwd}" 2>/dev/null && git init && git add -A && git commit -m "Initial commit for Codex" --allow-empty 2>/dev/null
+  echo "  📦 Auto-initialized git repo for Codex"
+fi
 
 cd "${cwd}" 2>/dev/null || cd "$HOME"
 

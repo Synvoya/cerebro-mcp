@@ -2,6 +2,8 @@
 
 **The brain that builds.**
 
+**v2.0.0** — Major release with zero-setup mode, project reader, and multi-provider CLI.
+
 Universal AI orchestrator — MCP for tools, A2A for agents. Chat thinks, agents specialize, CLI codes. One conversation, working software. No terminal required.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -71,6 +73,22 @@ Cerebro: Auto-creating session... picking Claude Code + Sonnet...
 ```
 
 No sessions to create. No agents to configure. Just describe what you want and where to save it.
+
+## What's New in v2.0.0
+
+Here's everything that's been added since the initial release:
+
+- **Quick Task** — Just say what you want. No sessions, no agents, no config. Cerebro figures it out.
+- **Project Reader** — Cerebro reads your folder structure and code before making changes. No blind edits.
+- **Multi-Provider CLI** — Use Claude Code, OpenAI Codex, or Aider. Switch providers with one sentence.
+- **Visible Terminal Windows** — Watch your AI work in real Terminal windows. See every command as it runs.
+- **Auto-Close Terminal** — Terminal stays open by default so you can review. Pass `autoCloseTerminal: true` to close automatically.
+- **Smart Model Routing** — Cerebro uses Sonnet by default. Say "use Opus" to switch. Codex automatically uses its own models (gpt-5.4) — no manual config needed.
+- **Provider & Model in Results** — Chat always tells you which agent, provider, and model completed your task.
+- **Auto Git Init for Codex** — Codex requires a git repo. Cerebro auto-initializes one if needed.
+- **Session Tokens** — Signed handover tokens let you continue in a new chat window without losing progress.
+- **Agent Swarm** — Build your AI team by talking. Agents persist, learn, and delegate to each other via A2A protocol.
+- **28 MCP Tools** — Organized into 6 categories: Session, Tasks, Agents, Vision, Handover, Workers.
 
 ## What Makes Cerebro Different
 
@@ -197,6 +215,8 @@ Paste a screenshot, mockup, or error message. Cerebro interprets it via Claude V
 Every task opens a real Terminal window so you can see exactly what's happening. The terminal shows the agent name, provider, model, and live CLI output as it runs. After completion, the terminal stays open for you to review.
 
 Want the terminal to close automatically? Pass `autoCloseTerminal: true` when delegating tasks.
+
+> **Note:** Claude Code runs in `--print` mode which shows a summary of what was built. Codex shows more detailed output including the exact commands it runs. The full output is always captured and sent back to Chat regardless of what the terminal displays.
 
 ### Project Reader — AI Understands Your Code
 
@@ -332,11 +352,11 @@ npm run build
 npm test
 ```
 
-**Current stats:** v0.2.0 · 69 files · ~6,500 lines of TypeScript · 28 MCP tools · 40/40 tests passing
+**Current stats:** v2.0.0 · 69 files · ~6,500 lines of TypeScript · 28 MCP tools · 40/40 tests passing
 
 ## Roadmap
 
-- [x] MCP server with 28 tools
+- [x] MCP server with 28 tools (v2.0.0)
 - [x] Session management with signed tokens
 - [x] Agent swarm with conversation-based CRUD
 - [x] A2A protocol for agent-to-agent communication
