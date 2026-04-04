@@ -109,8 +109,8 @@ if [ \$EXIT_CODE -eq 0 ]; then
 fi
 
 # Keep window open for user to read
-echo "  Press Enter to close this window..."
-read
+echo "  Terminal will stay open for review."
+echo "  Close this window when done."
 `;
 
   writeFileSync(scriptFile, script, { mode: 0o755 });

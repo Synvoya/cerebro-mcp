@@ -291,6 +291,114 @@ export function createCerebroServer(): McpServer {
   );
 
   server.tool(
+    "quick_task",
+    "The easiest way to use Cerebro — just describe what you want built or fixed. Auto-creates a session, picks the right CLI provider, and executes. Use this when the user says things like 'build me a website' or 'fix this bug' or 'review this code' without specifying sessions or agents. If no projectPath is given, ask the user where to save files.",
+    {
+      task: z.string().describe("What to build, fix, or do — in plain natural language"),
+      projectPath: z.string().optional().describe("Where to save files (e.g., ~/Projects/my-app). If omitted, Cerebro will use a default."),
+      provider: z.string().optional().describe("CLI provider to use: 'claude-code', 'codex', 'aider'. Defaults to claude-code."),
+      model: z.string().optional().describe("Model to use: 'sonnet', 'opus', 'haiku'. Defaults to sonnet."),
+    },
+    async ({ task, projectPath, provider, model }) => {
+      const { homedir } = await import("node:os");
+      const { existsSync, mkdirSync } = await import("node:fs");
+      const { runAgentTask } = await import("./agents/agent-runner.js");
+      const { resolveModel, resolveEffort, resolveSpawnMode } = await import("./workers/model-config.js");
+
+      // Auto-detect provider from task description
+      let resolvedProvider = (provider as any) || "claude-code";
+      const taskLower = task.toLowerCase();
+      if (!provider) {
+        if (taskLower.includes("codex") || taskLower.includes("openai")) resolvedProvider = "codex";
+        else if (taskLower.includes("aider")) resolvedProvider = "aider";
+      }
+
+      // Auto-detect model from task description
+      let resolvedModel = model || "sonnet";
+      if (!model) {
+        if (taskLower.includes("opus")) resolvedModel = "opus";
+        else if (taskLower.includes("haiku")) resolvedModel = "haiku";
+      }
+
+      // Resolve project path
+      const home = homedir();
+      const resolvedPath = projectPath
+        ? projectPath.replace(/^~/, home)
+        : `${home}/Projects/cerebro-workspace`;
+
+      if (!existsSync(resolvedPath)) {
+        try {
+          mkdirSync(resolvedPath, { recursive: true });
+        } catch {
+          return {
+            content: [{ type: "text", text: "Could not create directory. Please specify a writable folder path, e.g. ~/Projects/my-app" }],
+            isError: true,
+          };
+        }
+      }
+
+      // Auto-create a session
+      const session = createNewSession(resolvedPath);
+
+      // Create a temporary agent for this task
+      const { saveAgent } = await import("./session/store.js");
+      const agentId = uuidv4();
+      const agentName = "Quick Worker";
+      const now = new Date().toISOString();
+      const agentDef = {
+        agentId,
+        name: agentName,
+        description: "Auto-created agent for quick task execution",
+        createdAt: now,
+        createdBy: "conversation" as const,
+        persona: "You are a skilled developer. Complete the task efficiently and save all files in the working directory.",
+        tools: [] as string[],
+        preferences: { learned: {} },
+        chainTriggers: { onComplete: null, onError: null },
+        source: { tier: "user" as const, skillRef: null },
+        a2a: {
+          agentCardUrl: "",
+          endpoint: "",
+          supportedModalities: ["text"],
+          skills: [],
+          taskLifecycle: false,
+        },
+        version: "1.0.0",
+      };
+      saveAgent(session.id, agentDef);
+
+      // Execute
+      const result = await runAgentTask(
+        agentDef,
+        uuidv4(),
+        session.id,
+        task,
+        resolvedPath,
+        { provider: resolvedProvider as any, model: resolvedModel, mode: resolveSpawnMode() }
+      );
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            sessionId: session.id,
+            projectPath: resolvedPath,
+            provider: resolvedProvider,
+            model: resolvedModel,
+            success: result.success,
+            output: result.output?.slice(0, 3000),
+            duration: result.duration,
+            error: result.error || null,
+            message: result.success
+              ? `Task completed! Files saved to ${resolvedPath}`
+              : `Task failed: ${result.error}`,
+          }, null, 2),
+        }],
+      };
+    }
+  );
+
+  server.tool(
     "get_status",
     "Get current project progress and task status",
     { sessionId: z.string().describe("Session ID") },
