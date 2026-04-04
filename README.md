@@ -58,6 +58,20 @@ Then add to your Claude Desktop config (`claude_desktop_config.json`):
 
 Restart Claude Desktop. Cerebro's 28 tools are now available in Chat.
 
+## Just Talk — Zero Setup Mode
+
+Don't want to learn tools? Just use `quick_task`:
+
+```
+You: "Build me a portfolio website in ~/Projects/my-portfolio"
+
+Cerebro: Auto-creating session... picking Claude Code + Sonnet...
+  → Terminal opens, Claude Code starts building
+  → Task completed! Files saved to ~/Projects/my-portfolio
+```
+
+No sessions to create. No agents to configure. Just describe what you want and where to save it.
+
 ## What Makes Cerebro Different
 
 |  | Remote Control | Other Orchestrators | **Cerebro MCP** |
@@ -70,6 +84,7 @@ Restart Claude Desktop. Cerebro's 28 tools are now available in Chat.
 | **External agents** | N/A | N/A | **Any A2A agent joins** |
 | **Session continuity** | Single session | N/A | **Signed tokens** |
 | **CLI providers** | Claude Code only | Single provider | **Multi-provider** |
+| **Zero setup** | N/A | Config required | **Just talk** |
 
 ## Architecture
 
@@ -177,19 +192,76 @@ Real-time agent status with heartbeats, task broadcasting, and conversation thre
 
 Paste a screenshot, mockup, or error message. Cerebro interprets it via Claude Vision and converts it into actionable CLI instructions.
 
+### Visible Terminals — Watch Your AI Work
+
+Every task opens a real Terminal window so you can see exactly what's happening. The terminal shows the agent name, provider, model, and live CLI output as it runs. After completion, the terminal stays open for you to review.
+
+Want the terminal to close automatically? Pass `autoCloseTerminal: true` when delegating tasks.
+
+### Project Reader — AI Understands Your Code
+
+Before making changes, Cerebro can read your entire project structure and file contents. The AI understands your codebase before touching it — no blind edits.
+
+```
+You: "Read my project and explain the architecture"
+Cerebro: Scanning ~/Projects/my-app...
+  → 42 files across 8 directories
+  → TypeScript project with React frontend and Express backend...
+```
+
 ## 28 MCP Tools
 
-**Session:** `create_session` · `resume_session` · `pause_session` · `end_session` · `list_sessions`
+### Session Management
+| Tool | What it does |
+|------|-------------|
+| `create_session` | Start a new project workspace. Tell it where to save files. |
+| `resume_session` | Continue where you left off using a handover token. |
+| `pause_session` | Park your session for later — everything is saved. |
+| `end_session` | Finish and archive a session with all task history. |
+| `list_sessions` | See all your active, paused, and recent sessions. |
 
-**Tasks:** `execute_task` · `get_status` · `review_code` · `run_build` · `run_tests`
+### Task Execution
+| Tool | What it does |
+|------|-------------|
+| `quick_task` | **The easiest way to use Cerebro.** Just say what you want — auto-creates session, picks provider, and builds. No setup needed. |
+| `execute_task` | Run a task within an existing session. Auto-routes to the best agent. |
+| `read_project` | Read your project's folder structure and file contents so the AI understands your codebase. |
+| `get_status` | Check what's happening — see progress on all tasks. |
+| `review_code` | Get a human-friendly explanation of code changes. |
+| `run_build` | Trigger a build and see the results. |
+| `run_tests` | Run your test suite and get a summary. |
 
-**Agents:** `create_agent` · `list_agents` · `update_agent` · `remove_agent` · `get_agent_status` · `install_agent_pack` · `delegate_to_agent`
+### Agent Swarm
+| Tool | What it does |
+|------|-------------|
+| `create_agent` | Create a specialist agent by describing what it should do. "Add a QA agent that reviews code for security issues." |
+| `list_agents` | See all agents in your swarm with their status. |
+| `update_agent` | Change an agent's persona, skills, or preferences. |
+| `remove_agent` | Remove an agent from your swarm. |
+| `get_agent_status` | Check what a specific agent is working on. |
+| `install_agent_pack` | Install a pre-built team: `web-app`, `api-service`, or `content-site`. |
+| `delegate_to_agent` | Send a task directly to a specific agent. Returns provider, model, and results. |
 
-**Workers:** `configure_workers` · `detect_providers` · `configure_model`
+### Vision (Image Pipeline)
+| Tool | What it does |
+|------|-------------|
+| `analyze_image` | Paste a screenshot or mockup — Cerebro interprets it and suggests actions. |
+| `implement_from_image` | Turn a screenshot or design into working code. |
+| `compare_screenshots` | Visual diff between expected and actual — find what changed. |
 
-**Vision:** `analyze_image` · `implement_from_image` · `compare_screenshots`
+### Session Continuity
+| Tool | What it does |
+|------|-------------|
+| `prepare_handover` | Generate a signed token to continue in a new chat window. |
+| `validate_token` | Check if a handover token is still valid. |
+| `get_context_health` | See how much context window remains before you need a handover. |
 
-**Handover:** `prepare_handover` · `validate_token` · `get_context_health`
+### Worker Configuration
+| Tool | What it does |
+|------|-------------|
+| `configure_workers` | Route tasks to different CLI providers. "Use Codex for QA tasks." |
+| `detect_providers` | See which CLI tools are installed on your system. |
+| `configure_model` | Set the AI model and effort level. "Use Opus with high effort." |
 
 ## CLI Provider Setup
 
@@ -222,6 +294,8 @@ pip install aider-chat
 
 Cerebro auto-detects all installed providers via `detect_providers`.
 
+> **Note:** Cerebro automatically handles model compatibility between providers. If you configure Sonnet as your model, Cerebro will use it for Claude Code but skip it for Codex (which uses its own OpenAI models like gpt-5.4). No manual configuration needed.
+
 ## Project Structure
 
 ```
@@ -232,7 +306,7 @@ cerebro-mcp/
 │   ├── session/              # Session lifecycle + SQLite store
 │   ├── router/               # Task routing + decomposition
 │   ├── workers/              # CLI providers, terminal spawner,
-│   │                         # model config, Cowork (V2), MCP relay
+│   │                         # model config, pool, Cowork (V2), MCP relay
 │   ├── agents/               # Swarm, runner, confidence, delegation,
 │   │                         # memory, marketplace, heartbeat, threading
 │   ├── a2a/                  # A2A server, client, Agent Cards, lifecycle
@@ -240,7 +314,9 @@ cerebro-mcp/
 │   ├── handover/             # Engine, context monitor, directory
 │   ├── notifications/        # Webhooks + push alerts
 │   ├── dashboard/            # Agent status dashboard
-│   └── security/             # HMAC-SHA256 crypto
+│   ├── security/             # HMAC-SHA256 crypto
+│   ├── reporter/             # CLI output → human-friendly summaries
+│   └── types/                # TypeScript type definitions
 ├── agents/                   # Built-in agent templates
 ├── starter-kits/             # Shareable .cerebro/ configs
 └── tests/                    # Vitest test suite
@@ -256,6 +332,8 @@ npm run build
 npm test
 ```
 
+**Current stats:** v0.2.0 · 69 files · ~6,500 lines of TypeScript · 28 MCP tools · 40/40 tests passing
+
 ## Roadmap
 
 - [x] MCP server with 28 tools
@@ -269,6 +347,8 @@ npm test
 - [x] Starter kits (web-app, api-service, content-site)
 - [x] Claude Code CLI integration (subprocess management)
 - [x] Multi-provider CLI (Claude Code, Codex, Aider, generic shell)
+- [x] Quick task — zero-setup execution via natural language
+- [x] Project reader — AI reads your codebase before making changes
 - [x] Visible terminal spawner (branded agent windows)
 - [x] Model and effort configuration via natural language
 - [ ] Cowork integration (pending Anthropic API)
