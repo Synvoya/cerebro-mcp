@@ -199,8 +199,6 @@ export function createCerebroServer(): McpServer {
       const { spawnTask } = await import("./workers/terminal-spawner.js");
       const { resolveModel, resolveEffort, resolveSpawnMode } = await import("./workers/model-config.js");
       const { getAgent } = await import("./session/store.js");
-      const { formatTaskResult } = await import("./reporter/result-reporter.js");
-
       // If a specific agent was requested, delegate directly
       if (targetAgent) {
         const agent = getAgent(targetAgent);
@@ -392,6 +390,110 @@ export function createCerebroServer(): McpServer {
             message: result.success
               ? `Task completed! Files saved to ${resolvedPath}`
               : `Task failed: ${result.error}`,
+          }, null, 2),
+        }],
+      };
+    }
+  );
+
+  server.tool(
+    "read_project",
+    "Read the project folder structure and file contents. Use this to understand a codebase before making changes. Returns directory tree and optionally file contents for specified files or all files.",
+    {
+      sessionId: z.string().describe("Session ID"),
+      path: z.string().optional().describe("Specific file or subdirectory to read. If omitted, reads the project root."),
+      includeContents: z.boolean().optional().describe("If true, also read file contents (not just listing). Default: false for directories, true for individual files."),
+      maxDepth: z.number().optional().describe("Max directory depth to scan. Default: 3"),
+      filePattern: z.string().optional().describe("Glob pattern to filter files, e.g. '*.ts' or '*.py'. Default: all files."),
+    },
+    async ({ sessionId, path, includeContents, maxDepth, filePattern }) => {
+      const session = getSession(sessionId);
+      if (!session) {
+        return { content: [{ type: "text", text: "Session not found" }], isError: true };
+      }
+
+      const { readdirSync, readFileSync, statSync } = await import("node:fs");
+      const { join, relative, extname } = await import("node:path");
+
+      const rootPath = session.projectPath;
+      const targetPath = path ? join(rootPath, path) : rootPath;
+      const depth = maxDepth || 3;
+
+      // Check if target is a file
+      try {
+        const stat = statSync(targetPath);
+        if (stat.isFile()) {
+          const content = readFileSync(targetPath, "utf-8");
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                file: relative(rootPath, targetPath),
+                size: stat.size,
+                content: content.slice(0, 50000),
+                truncated: content.length > 50000,
+              }, null, 2),
+            }],
+          };
+        }
+      } catch { /* target might not exist */ }
+
+      // Scan directory tree
+      const IGNORE = new Set(["node_modules", ".git", "build", "dist", ".cerebro", ".next", "coverage", "__pycache__"]);
+      const BINARY_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".map", ".lock"]);
+
+      interface FileEntry {
+        path: string;
+        size: number;
+        content?: string;
+      }
+
+      const files: FileEntry[] = [];
+
+      function scanDir(dir: string, currentDepth: number): void {
+        if (currentDepth > depth) return;
+        try {
+          const entries = readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.name.startsWith(".") && entry.name !== ".env.example") continue;
+            if (IGNORE.has(entry.name)) continue;
+
+            const fullPath = join(dir, entry.name);
+            const relPath = relative(rootPath, fullPath);
+
+            if (entry.isDirectory()) {
+              files.push({ path: relPath + "/", size: 0 });
+              scanDir(fullPath, currentDepth + 1);
+            } else if (entry.isFile()) {
+              const ext = extname(entry.name);
+              if (filePattern && !entry.name.match(new RegExp(filePattern.replace("*", ".*")))) continue;
+
+              const stat = statSync(fullPath);
+              const fileEntry: FileEntry = { path: relPath, size: stat.size };
+
+              if (includeContents && !BINARY_EXTS.has(ext) && stat.size < 100000) {
+                try {
+                  fileEntry.content = readFileSync(fullPath, "utf-8");
+                } catch { /* skip unreadable files */ }
+              }
+
+              files.push(fileEntry);
+            }
+          }
+        } catch { /* skip unreadable dirs */ }
+      }
+
+      scanDir(targetPath, 0);
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            projectPath: rootPath,
+            scannedPath: relative(rootPath, targetPath) || ".",
+            totalFiles: files.filter(f => !f.path.endsWith("/")).length,
+            totalDirs: files.filter(f => f.path.endsWith("/")).length,
+            files,
           }, null, 2),
         }],
       };
@@ -711,8 +813,6 @@ export function createCerebroServer(): McpServer {
       // Execute the task — spawns a visible Terminal window
       const { runAgentTask } = await import("./agents/agent-runner.js");
       const result = await runAgentTask(agent, taskId, sessionId, task, projectPath);
-
-      const { formatTaskResult } = await import("./reporter/result-reporter.js");
 
       return {
         content: [
