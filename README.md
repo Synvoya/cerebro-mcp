@@ -85,6 +85,8 @@ Every single one of Cerebro's 28 tools now works for real. No stubs, no placehol
 - **Agent Marketplace** — `install_agent_pack` loads pre-built agent teams from starter kits. Try `web-app`, `api-service`, or `content-site`.
 - **Vision Pipeline** — Upload a screenshot to Chat. Chat sees it, describes it, and Cerebro fixes or builds from it. No API key needed — Chat IS the vision layer.
 - **Context Health** — `get_context_health` tracks real token usage per session. Warns you at 60%, suggests handover at 80%.
+
+> **Note:** `get_context_health` tracks Cerebro session context (task count and estimated token usage within a Cerebro session), not the Chat conversation window. For Chat context, Claude will naturally suggest starting a new conversation when the window gets full. Real-time Chat context tracking is planned for v3.0.
 - **Token Persistence** — Handover tokens now survive server restarts. Your session tokens stay valid across reboots.
 - **Security** — AppleScript injection prevention in terminal titles. Token secrets stored with owner-only file permissions.
 
@@ -393,6 +395,7 @@ npm test
 - [ ] Cowork integration (pending Anthropic API)
 - [ ] Agent dashboard web UI
 - [ ] Remote CLI workers (VPS/cloud)
+- [ ] Context Watcher — real-time Chat context window tracking with live terminal dashboard (v3.0)
 - [ ] Community agent repository
 
 ## Contributing
