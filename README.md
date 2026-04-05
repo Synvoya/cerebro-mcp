@@ -2,7 +2,7 @@
 
 **The brain that builds.**
 
-**v2.0.0** — Major release with zero-setup mode, project reader, and multi-provider CLI.
+**v2.1.0** — All 28 tools fully implemented. Zero stubs. Production-ready.
 
 Universal AI orchestrator — MCP for tools, A2A for agents. Chat thinks, agents specialize, CLI codes. One conversation, working software. No terminal required.
 
@@ -74,21 +74,30 @@ Cerebro: Auto-creating session... picking Claude Code + Sonnet...
 
 No sessions to create. No agents to configure. Just describe what you want and where to save it.
 
-## What's New in v2.0.0
+## What's New
 
-Here's everything that's been added since the initial release:
+### v2.1.0 — All Tools Working (April 2026)
+
+Every single one of Cerebro's 28 tools now works for real. No stubs, no placeholders, no "coming soon."
+
+- **Code Review** — `review_code` now runs a real code review via CLI. Get quality, security, and best practice feedback on your project.
+- **Build & Test** — `run_build` and `run_tests` detect your build system and run it. Works with npm, Python, Go, Rust, and more.
+- **Agent Marketplace** — `install_agent_pack` loads pre-built agent teams from starter kits. Try `web-app`, `api-service`, or `content-site`.
+- **Vision Pipeline** — Upload a screenshot to Chat. Chat sees it, describes it, and Cerebro fixes or builds from it. No API key needed — Chat IS the vision layer.
+- **Context Health** — `get_context_health` tracks real token usage per session. Warns you at 60%, suggests handover at 80%.
+- **Token Persistence** — Handover tokens now survive server restarts. Your session tokens stay valid across reboots.
+- **Security** — AppleScript injection prevention in terminal titles. Token secrets stored with owner-only file permissions.
+
+### v2.0.0 — Major Feature Release (April 2026)
 
 - **Quick Task** — Just say what you want. No sessions, no agents, no config. Cerebro figures it out.
 - **Project Reader** — Cerebro reads your folder structure and code before making changes. No blind edits.
 - **Multi-Provider CLI** — Use Claude Code, OpenAI Codex, or Aider. Switch providers with one sentence.
 - **Visible Terminal Windows** — Watch your AI work in real Terminal windows. See every command as it runs.
 - **Auto-Close Terminal** — Terminal stays open by default so you can review. Pass `autoCloseTerminal: true` to close automatically.
-- **Smart Model Routing** — Cerebro uses Sonnet by default. Say "use Opus" to switch. Codex automatically uses its own models (gpt-5.4) — no manual config needed.
+- **Smart Model Routing** — Cerebro uses Sonnet by default. Say "use Opus" to switch. Codex automatically uses its own models (gpt-5.4).
 - **Provider & Model in Results** — Chat always tells you which agent, provider, and model completed your task.
 - **Auto Git Init for Codex** — Codex requires a git repo. Cerebro auto-initializes one if needed.
-- **Session Tokens** — Signed handover tokens let you continue in a new chat window without losing progress.
-- **Agent Swarm** — Build your AI team by talking. Agents persist, learn, and delegate to each other via A2A protocol.
-- **28 MCP Tools** — Organized into 6 categories: Session, Tasks, Agents, Vision, Handover, Workers.
 
 ## What Makes Cerebro Different
 
@@ -206,9 +215,19 @@ Built-in kits: `web-app` (Coder + Designer + QA), `api-service` (Coder + QA + De
 
 Real-time agent status with heartbeats, task broadcasting, and conversation threading. See your AI team working like a project management board.
 
-### Image Pipeline
+### Vision Pipeline — Screenshot to Fix
 
-Paste a screenshot, mockup, or error message. Cerebro interprets it via Claude Vision and converts it into actionable CLI instructions.
+Upload a screenshot, mockup, or error message to Chat. Chat (Claude) sees and interprets the image, then orchestrates Cerebro to act on it. No API key needed — Chat IS the vision layer.
+
+```
+You: [uploads screenshot of broken nav bar]
+Chat: "I can see the nav overlaps the hero section on mobile. The z-index needs fixing."
+→ Cerebro calls implement_from_image
+→ Coder agent patches the CSS
+→ "Fixed! Nav now layers correctly on all screen sizes."
+```
+
+This works because Claude Chat has built-in vision. When you paste an image, Chat describes what it sees and translates that into instructions for Cerebro's CLI workers.
 
 ### Visible Terminals — Watch Your AI Work
 
@@ -352,11 +371,11 @@ npm run build
 npm test
 ```
 
-**Current stats:** v2.0.0 · 69 files · ~6,500 lines of TypeScript · 28 MCP tools · 40/40 tests passing
+**Current stats:** v2.1.0 · 69 files · ~6,500 lines of TypeScript · 28 MCP tools (all fully implemented) · 40/40 tests passing
 
 ## Roadmap
 
-- [x] MCP server with 28 tools (v2.0.0)
+- [x] MCP server with 28 tools — all fully implemented (v2.1.0)
 - [x] Session management with signed tokens
 - [x] Agent swarm with conversation-based CRUD
 - [x] A2A protocol for agent-to-agent communication

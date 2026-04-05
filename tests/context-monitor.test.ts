@@ -1,57 +1,96 @@
 // Copyright (c) 2026 Synvoya. Apache-2.0 License.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  trackMessage,
   getContextHealth,
   shouldWarn,
-  resetTracking,
-  getMessageCount,
 } from "../src/handover/context-monitor.js";
+import type { Session } from "../src/types/index.js";
+
+function makeSession(completedCount: number, pendingCount = 0): Session {
+  const completedTasks = Array.from({ length: completedCount }, (_, i) => ({
+    id: `task-${i}`,
+    description: `Task ${i}`,
+    state: "completed" as const,
+    assignedTo: null,
+    agentId: null,
+    createdAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    result: null,
+    threadId: null,
+    parentTaskId: null,
+  }));
+  const taskQueue = Array.from({ length: pendingCount }, (_, i) => ({
+    id: `pending-${i}`,
+    description: `Pending ${i}`,
+    state: "pending" as const,
+    assignedTo: null,
+    agentId: null,
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    result: null,
+    threadId: null,
+    parentTaskId: null,
+  }));
+  return {
+    id: "test-session",
+    state: "active",
+    createdAt: new Date().toISOString(),
+    lastActive: new Date().toISOString(),
+    projectHash: "abc123",
+    projectPath: "/tmp/test",
+    taskQueue,
+    completedTasks,
+    fileManifest: [],
+    agents: [],
+    metadata: {},
+  };
+}
 
 describe("Context Monitor", () => {
-  beforeEach(() => {
-    resetTracking();
-  });
-
-  it("starts with no usage", () => {
-    const health = getContextHealth();
-    expect(health.estimatedUsage).toBe(0);
-    expect(health.estimatedRemaining).toBe(100);
+  it("starts with no usage for empty session", () => {
+    const health = getContextHealth(makeSession(0));
+    expect(health.messagesInSession).toBe(0);
+    expect(health.estimatedTokensUsed).toBe(0);
+    expect(health.estimatedTokensRemaining).toBe(200000);
+    expect(health.percentUsed).toBe(0);
+    expect(health.recommendation).toBe("Context healthy");
     expect(health.warningLevel).toBe("none");
   });
 
-  it("tracks message consumption", () => {
-    trackMessage(1000, 2000);
-    const health = getContextHealth();
-    expect(health.estimatedUsage).toBeGreaterThan(0);
-    expect(health.estimatedRemaining).toBeLessThan(100);
+  it("tracks completed tasks as token consumption", () => {
+    const health = getContextHealth(makeSession(10));
+    expect(health.messagesInSession).toBe(10);
+    expect(health.estimatedTokensUsed).toBe(20000);
+    expect(health.estimatedTokensRemaining).toBe(180000);
+    expect(health.percentUsed).toBe(10);
   });
 
-  it("counts messages", () => {
-    trackMessage(100, 200);
-    trackMessage(100, 200);
-    expect(getMessageCount()).toBe(2);
+  it("includes pending tasks in message count", () => {
+    const health = getContextHealth(makeSession(5, 3));
+    expect(health.messagesInSession).toBe(8);
+    // Only completed tasks count toward token usage
+    expect(health.estimatedTokensUsed).toBe(10000);
   });
 
-  it("warns at caution threshold", () => {
-    // Simulate heavy usage (60% of ~200k tokens)
-    for (let i = 0; i < 40; i++) {
-      trackMessage(1500, 1500);
-    }
-    const health = getContextHealth();
-    expect(health.warningLevel).not.toBe("none");
+  it("warns at 60% threshold (caution)", () => {
+    // 60 completed tasks * 2000 = 120,000 / 200,000 = 60%
+    const health = getContextHealth(makeSession(60));
+    expect(health.warningLevel).toBe("caution");
+    expect(health.recommendation).toBe("Consider handover soon");
+    expect(health.handoverReady).toBe(true);
+    expect(health.shouldHandover).toBe(false);
   });
 
-  it("resets tracking", () => {
-    trackMessage(5000, 5000);
-    resetTracking();
-    expect(getMessageCount()).toBe(0);
-    expect(getContextHealth().estimatedUsage).toBe(0);
+  it("warns at 80% threshold (critical)", () => {
+    // 80 completed tasks * 2000 = 160,000 / 200,000 = 80%
+    const health = getContextHealth(makeSession(80));
+    expect(health.warningLevel).toBe("critical");
+    expect(health.recommendation).toBe("Context nearly full — prepare handover");
+    expect(health.shouldHandover).toBe(true);
   });
 
   it("should not warn with low usage", () => {
-    trackMessage(100, 100);
-    expect(shouldWarn()).toBe(false);
+    expect(shouldWarn(makeSession(5))).toBe(false);
   });
 });

@@ -153,7 +153,7 @@ function openMacTerminal(scriptFile: string, title: string): void {
     tell application "Terminal"
       activate
       set newTab to do script "bash \\"${scriptFile}\\""
-      set custom title of front window to "Cerebro: ${title.replace(/"/g, '\\"')}"
+      set custom title of front window to "Cerebro: ${title.replace(/["\\\\']/g, ' ')}"
     end tell
   `;
 

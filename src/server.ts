@@ -539,14 +539,33 @@ export function createCerebroServer(): McpServer {
       filePath: z.string().optional().describe("Specific file to review"),
     },
     async ({ sessionId, filePath }) => {
-      // TODO: Phase 2 — read file via CLI worker and summarize
+      const session = getSession(sessionId);
+      if (!session) return { content: [{ type: "text", text: "Session not found" }], isError: true };
+
+      const { spawnTask } = await import("./workers/terminal-spawner.js");
+      const { resolveModel, resolveEffort, resolveSpawnMode } = await import("./workers/model-config.js");
+
+      const reviewResult = await spawnTask({
+        taskId: uuidv4(),
+        agentName: "Code Reviewer",
+        taskDescription: `Review the code in this project. Focus on: code quality, potential bugs, security issues, performance concerns, and best practices. ${filePath ? `Focus on file: ${filePath}` : "Review the entire project."}`,
+        provider: "claude-code" as any,
+        cwd: session.projectPath,
+        mode: resolveSpawnMode(),
+        model: resolveModel(),
+        effort: resolveEffort(),
+      });
+
       return {
-        content: [
-          {
-            type: "text",
-            text: `Code review requested for session ${sessionId}${filePath ? `, file: ${filePath}` : ""}. CLI worker integration needed.`,
-          },
-        ],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            success: reviewResult.success,
+            review: reviewResult.output?.slice(0, 5000),
+            duration: reviewResult.duration,
+            error: reviewResult.error || null,
+          }, null, 2),
+        }],
       };
     }
   );
@@ -556,11 +575,32 @@ export function createCerebroServer(): McpServer {
     "Trigger a project build and return results",
     { sessionId: z.string().describe("Session ID") },
     async ({ sessionId }) => {
-      // TODO: Phase 2 — execute build via CLI worker
+      const session = getSession(sessionId);
+      if (!session) return { content: [{ type: "text", text: "Session not found" }], isError: true };
+
+      const { spawnTask } = await import("./workers/terminal-spawner.js");
+      const { resolveSpawnMode } = await import("./workers/model-config.js");
+
+      const buildResult = await spawnTask({
+        taskId: uuidv4(),
+        agentName: "Build Runner",
+        taskDescription: "Run the project build command. Try npm run build first. If no package.json exists, look for Makefile, setup.py, or other build systems. Report the build output and any errors.",
+        provider: "claude-code" as any,
+        cwd: session.projectPath,
+        mode: resolveSpawnMode(),
+      });
+
       return {
-        content: [
-          { type: "text", text: `Build triggered for session ${sessionId}. CLI worker integration needed.` },
-        ],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            success: buildResult.success,
+            output: buildResult.output?.slice(0, 5000),
+            duration: buildResult.duration,
+            error: buildResult.error || null,
+            message: buildResult.success ? "Build completed successfully" : "Build failed — check output for errors",
+          }, null, 2),
+        }],
       };
     }
   );
@@ -570,11 +610,32 @@ export function createCerebroServer(): McpServer {
     "Run the test suite and return results",
     { sessionId: z.string().describe("Session ID") },
     async ({ sessionId }) => {
-      // TODO: Phase 2 — execute tests via CLI worker
+      const session = getSession(sessionId);
+      if (!session) return { content: [{ type: "text", text: "Session not found" }], isError: true };
+
+      const { spawnTask } = await import("./workers/terminal-spawner.js");
+      const { resolveSpawnMode } = await import("./workers/model-config.js");
+
+      const testResult = await spawnTask({
+        taskId: uuidv4(),
+        agentName: "Test Runner",
+        taskDescription: "Run the project test suite. Try npm test first. If that fails, look for other test commands (pytest, cargo test, go test, etc). Report the test results including pass/fail counts and any failures.",
+        provider: "claude-code" as any,
+        cwd: session.projectPath,
+        mode: resolveSpawnMode(),
+      });
+
       return {
-        content: [
-          { type: "text", text: `Tests triggered for session ${sessionId}. CLI worker integration needed.` },
-        ],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            success: testResult.success,
+            output: testResult.output?.slice(0, 5000),
+            duration: testResult.duration,
+            error: testResult.error || null,
+            message: testResult.success ? "All tests passed" : "Some tests failed — check output",
+          }, null, 2),
+        }],
       };
     }
   );
@@ -766,12 +827,56 @@ export function createCerebroServer(): McpServer {
       sessionId: z.string().describe("Session ID"),
     },
     async ({ packName, sessionId }) => {
-      // TODO: Phase 3 — load from starter-kits/ directory
+      const { readFileSync } = await import("node:fs");
+      const { resolve, dirname } = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+      const { saveAgent } = await import("./session/store.js");
+
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const jsonPath = resolve(__dirname, "..", "starter-kits", packName, "agents.json");
+
+      let raw: string;
+      try {
+        raw = readFileSync(jsonPath, "utf-8");
+      } catch {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Agent pack '${packName}' not found. Available packs: web-app, api-service, content-site.`,
+            },
+          ],
+        };
+      }
+
+      const pack = JSON.parse(raw);
+      const agents: { agentId: string; name: string }[] = [];
+
+      for (const entry of pack.agents) {
+        const agentId = uuidv4();
+        saveAgent(sessionId, {
+          agentId,
+          name: entry.name,
+          description: entry.description,
+          createdAt: new Date().toISOString(),
+          createdBy: "marketplace",
+          persona: entry.persona,
+          tools: entry.tools || [],
+          preferences: { learned: {} },
+          chainTriggers: entry.chainTriggers || { onComplete: null, onError: null },
+          source: { tier: "community", skillRef: `starter-kits/${packName}` },
+          a2a: { agentCardUrl: "", endpoint: "", supportedModalities: [], skills: [], taskLifecycle: false },
+          version: "1.0.0",
+        });
+        agents.push({ agentId, name: entry.name });
+      }
+
+      const summary = agents.map((a) => `  - ${a.name} (${a.agentId})`).join("\n");
       return {
         content: [
           {
             type: "text",
-            text: `Agent pack '${packName}' installation requested for session ${sessionId}. Marketplace integration needed.`,
+            text: `Installed ${agents.length} agents from '${packName}' pack:\n${summary}`,
           },
         ],
       };
@@ -854,58 +959,118 @@ export function createCerebroServer(): McpServer {
 
   server.tool(
     "analyze_image",
-    "Interpret an image and suggest actions based on its content",
+    "Interpret an image and suggest actions. How it works: the user uploads an image to Chat, Chat (Claude) sees and describes it, then calls this tool with the description. No API key needed — Chat IS the vision layer.",
     {
-      imageData: z.string().describe("Base64-encoded image data"),
-      context: z.string().optional().describe("Additional context about the image"),
+      sessionId: z.string().describe("Session ID"),
+      description: z.string().describe("What Chat sees in the image — describe the content, layout, errors, or design elements"),
+      context: z.string().optional().describe("Additional context about what the user wants to do with this image"),
     },
-    async ({ imageData, context }) => {
-      // TODO: Phase 5 — pass to Claude Vision API
+    async ({ sessionId, description, context }) => {
+      const session = getSession(sessionId);
+      if (!session) return { content: [{ type: "text", text: "Session not found" }], isError: true };
+
+      const suggestedActions: string[] = [];
+      const descLower = description.toLowerCase();
+
+      if (descLower.includes("error") || descLower.includes("bug") || descLower.includes("broken") || descLower.includes("crash") || descLower.includes("fix")) {
+        suggestedActions.push("Use implement_from_image to fix this issue automatically");
+      }
+      if (descLower.includes("design") || descLower.includes("mockup") || descLower.includes("layout") || descLower.includes("ui") || descLower.includes("wireframe")) {
+        suggestedActions.push("Use implement_from_image to build this design into working code");
+      }
+      if (descLower.includes("screenshot") || descLower.includes("compare") || descLower.includes("diff") || descLower.includes("before") || descLower.includes("after")) {
+        suggestedActions.push("Use compare_screenshots to find and fix visual differences");
+      }
+      if (suggestedActions.length === 0) {
+        suggestedActions.push("Use implement_from_image to act on this image");
+        suggestedActions.push("Use delegate_to_agent to route to a specialist agent");
+      }
+
       return {
-        content: [
-          {
-            type: "text",
-            text: `Image received (${imageData.length} chars). Vision pipeline integration needed.${context ? ` Context: ${context}` : ""}`,
-          },
-        ],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            analysis: description,
+            context: context || null,
+            suggestedActions,
+            message: "Image analyzed by Chat. Use suggested actions to proceed.",
+          }, null, 2),
+        }],
       };
     }
   );
 
   server.tool(
     "implement_from_image",
-    "Build or fix code based on image content (screenshot, mockup, error)",
+    "Build or fix code based on an image. Chat sees the image, describes it, and this tool sends the description to a CLI worker to implement. Works for: screenshots of bugs to fix, mockups to build, error messages to resolve.",
     {
       sessionId: z.string().describe("Session ID"),
-      imageData: z.string().describe("Base64-encoded image data"),
-      instruction: z.string().optional().describe("What to do with the image"),
+      description: z.string().describe("What Chat sees in the image and what needs to be built or fixed"),
+      targetPath: z.string().optional().describe("Specific file to modify, if known"),
     },
-    async ({ sessionId, imageData, instruction }) => {
-      // TODO: Phase 5 — vision → decomposer → CLI worker
+    async ({ sessionId, description, targetPath }) => {
+      const session = getSession(sessionId);
+      if (!session) return { content: [{ type: "text", text: "Session not found" }], isError: true };
+
+      const { spawnTask } = await import("./workers/terminal-spawner.js");
+      const { resolveModel, resolveEffort, resolveSpawnMode } = await import("./workers/model-config.js");
+
+      const taskPrompt = targetPath
+        ? `Based on this image analysis, fix the file ${targetPath}:\n\n${description}`
+        : `Based on this image analysis, implement or fix the code:\n\n${description}\n\nMake the necessary changes in the project. If building from a mockup, create the HTML/CSS/JS files. If fixing a bug from a screenshot, locate and fix the issue.`;
+
+      const result = await spawnTask({
+        taskId: uuidv4(),
+        agentName: "Vision Builder",
+        taskDescription: taskPrompt,
+        provider: "claude-code" as any,
+        cwd: session.projectPath,
+        mode: resolveSpawnMode(),
+        model: resolveModel(),
+        effort: resolveEffort(),
+      });
+
       return {
-        content: [
-          {
-            type: "text",
-            text: `Implementation from image requested for session ${sessionId}. Vision + CLI integration needed.`,
-          },
-        ],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            success: result.success,
+            output: result.output?.slice(0, 5000),
+            duration: result.duration,
+            error: result.error || null,
+            message: result.success
+              ? "Code implemented based on image analysis"
+              : "Implementation failed: " + (result.error || "unknown error"),
+          }, null, 2),
+        }],
       };
     }
   );
 
   server.tool(
     "compare_screenshots",
-    "Visual diff between expected and actual screenshots",
+    "Visual diff between expected and actual. Chat compares two images and describes the differences, then this tool structures the findings and can trigger fixes.",
     {
-      expected: z.string().describe("Base64-encoded expected screenshot"),
-      actual: z.string().describe("Base64-encoded actual screenshot"),
+      sessionId: z.string().describe("Session ID"),
+      expected: z.string().describe("Description of the expected/before screenshot"),
+      actual: z.string().describe("Description of the actual/after screenshot"),
+      differences: z.string().describe("What differences Chat spotted between the two"),
     },
-    async ({ expected, actual }) => {
-      // TODO: Phase 5 — vision comparison
+    async ({ sessionId, expected, actual, differences }) => {
+      const session = getSession(sessionId);
+      if (!session) return { content: [{ type: "text", text: "Session not found" }], isError: true };
+
       return {
-        content: [
-          { type: "text", text: "Screenshot comparison requested. Vision pipeline integration needed." },
-        ],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            expected,
+            actual,
+            differences,
+            suggestedFix: "Use implement_from_image with the differences description to fix the code, or delegate_to_agent with a Coder agent.",
+            message: "Visual comparison complete. Use implement_from_image to fix the differences.",
+          }, null, 2),
+        }],
       };
     }
   );
@@ -975,23 +1140,21 @@ export function createCerebroServer(): McpServer {
     "Report current context window usage and handover readiness",
     { sessionId: z.string().describe("Session ID") },
     async ({ sessionId }) => {
-      // TODO: Phase 5 — actual context tracking
+      const { getSession } = await import("./session/store.js");
+      const { getContextHealth } = await import("./handover/context-monitor.js");
+      const session = getSession(sessionId);
+      if (!session) {
+        return {
+          content: [{ type: "text", text: `Session ${sessionId} not found` }],
+          isError: true,
+        };
+      }
+      const health = getContextHealth(session);
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                estimatedUsage: 0,
-                estimatedRemaining: 100,
-                warningLevel: "none",
-                shouldHandover: false,
-                handoverReady: false,
-                message: "Context health monitoring — full implementation in Phase 5",
-              },
-              null,
-              2
-            ),
+            text: JSON.stringify(health, null, 2),
           },
         ],
       };

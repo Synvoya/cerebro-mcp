@@ -271,8 +271,11 @@ export interface ImageAnalysis {
 // ─── Handover Types ──────────────────────────────────────────────
 
 export interface ContextHealth {
-  estimatedUsage: number;
-  estimatedRemaining: number;
+  messagesInSession: number;
+  estimatedTokensUsed: number;
+  estimatedTokensRemaining: number;
+  percentUsed: number;
+  recommendation: string;
   warningLevel: "none" | "caution" | "critical";
   shouldHandover: boolean;
   handoverReady: boolean;

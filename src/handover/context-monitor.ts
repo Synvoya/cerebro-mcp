@@ -1,61 +1,52 @@
 // Copyright (c) 2026 Synvoya. Apache-2.0 License.
 
-import type { ContextHealth } from "../types/index.js";
+import type { ContextHealth, Session } from "../types/index.js";
 
-let messageCount = 0;
-let estimatedTokens = 0;
-const MAX_TOKENS_ESTIMATE = 200000; // Conservative estimate for context window
-
-/**
- * Track context consumption from a message exchange.
- */
-export function trackMessage(inputTokens: number, outputTokens: number): void {
-  messageCount++;
-  estimatedTokens += inputTokens + outputTokens;
-}
+const TOKENS_PER_TASK = 2000;
+const MAX_TOKENS = 200000;
 
 /**
- * Get current context health status.
+ * Get current context health status based on actual session usage.
+ * Uses completedTasks count as a proxy: each task ≈ 2000 tokens.
  */
-export function getContextHealth(): ContextHealth {
-  const usage = Math.min(estimatedTokens / MAX_TOKENS_ESTIMATE, 1.0);
-  const remaining = 1.0 - usage;
+export function getContextHealth(session: Session): ContextHealth {
+  const messagesInSession = session.completedTasks.length + session.taskQueue.length;
+  const estimatedTokensUsed = session.completedTasks.length * TOKENS_PER_TASK;
+  const estimatedTokensRemaining = Math.max(0, MAX_TOKENS - estimatedTokensUsed);
+  const percentUsed = Math.min(Math.round((estimatedTokensUsed / MAX_TOKENS) * 100), 100);
 
   let warningLevel: ContextHealth["warningLevel"] = "none";
-  if (remaining <= 0.2) {
+  let recommendation = "Context healthy";
+  let shouldHandover = false;
+  let handoverReady = false;
+
+  if (percentUsed >= 80) {
     warningLevel = "critical";
-  } else if (remaining <= 0.4) {
+    recommendation = "Context nearly full — prepare handover";
+    shouldHandover = true;
+    handoverReady = true;
+  } else if (percentUsed >= 60) {
     warningLevel = "caution";
+    recommendation = "Consider handover soon";
+    handoverReady = true;
   }
 
   return {
-    estimatedUsage: Math.round(usage * 100),
-    estimatedRemaining: Math.round(remaining * 100),
+    messagesInSession,
+    estimatedTokensUsed,
+    estimatedTokensRemaining,
+    percentUsed,
+    recommendation,
     warningLevel,
-    shouldHandover: remaining <= 0.2,
-    handoverReady: remaining <= 0.4,
+    shouldHandover,
+    handoverReady,
   };
 }
 
 /**
  * Check if we should warn the user about context limits.
  */
-export function shouldWarn(): boolean {
-  const health = getContextHealth();
+export function shouldWarn(session: Session): boolean {
+  const health = getContextHealth(session);
   return health.warningLevel !== "none";
-}
-
-/**
- * Reset tracking (for new session or after handover).
- */
-export function resetTracking(): void {
-  messageCount = 0;
-  estimatedTokens = 0;
-}
-
-/**
- * Get message count for the current session.
- */
-export function getMessageCount(): number {
-  return messageCount;
 }

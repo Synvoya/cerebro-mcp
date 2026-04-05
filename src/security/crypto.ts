@@ -1,9 +1,27 @@
 // Copyright (c) 2026 Synvoya. Apache-2.0 License.
 
 import { createHmac, randomBytes, createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
-const SECRET_KEY =
-  process.env.CEREBRO_SECRET_KEY || randomBytes(32).toString("hex");
+function loadOrCreateSecret(): string {
+  if (process.env.CEREBRO_SECRET_KEY) return process.env.CEREBRO_SECRET_KEY;
+
+  const dir = join(homedir(), ".cerebro");
+  const keyPath = join(dir, "secret.key");
+
+  if (existsSync(keyPath)) {
+    return readFileSync(keyPath, "utf-8").trim();
+  }
+
+  mkdirSync(dir, { recursive: true });
+  const secret = randomBytes(32).toString("hex");
+  writeFileSync(keyPath, secret, { mode: 0o600 });
+  return secret;
+}
+
+const SECRET_KEY = loadOrCreateSecret();
 
 export function signToken(payload: string): string {
   return createHmac("sha256", SECRET_KEY).update(payload).digest("hex");

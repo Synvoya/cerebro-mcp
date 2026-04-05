@@ -14,7 +14,7 @@ export function prepareHandover(sessionId: string): HandoverData | null {
   if (!session) return null;
 
   const token = generateToken(session);
-  const health = getContextHealth();
+  const health = getContextHealth(session);
 
   return {
     session,
