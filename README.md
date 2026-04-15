@@ -58,7 +58,7 @@ Then add to your Claude Desktop config (`claude_desktop_config.json`):
 }
 ```
 
-Restart Claude Desktop. Cerebro's 28 tools are now available in Chat.
+Restart Claude Desktop. Cerebro's 30 tools are now available in Chat.
 
 ## Just Talk — Zero Setup Mode
 
@@ -250,7 +250,7 @@ Cerebro: Scanning ~/Projects/my-app...
   → TypeScript project with React frontend and Express backend...
 ```
 
-## 28 MCP Tools
+## 30 MCP Tools
 
 ### Session Management
 | Tool | What it does |
@@ -296,6 +296,12 @@ Cerebro: Scanning ~/Projects/my-app...
 | `prepare_handover` | Generate a signed token to continue in a new chat window. |
 | `validate_token` | Check if a handover token is still valid. |
 | `get_context_health` | See how much context window remains before you need a handover. |
+
+### Context Watcher
+| Tool | What it does |
+|------|-------------|
+| `start_context_watcher` | Start real-time token tracking with a live terminal dashboard. |
+| `stop_context_watcher` | Stop the context watcher and close the dashboard. |
 
 ### Worker Configuration
 | Tool | What it does |
@@ -352,6 +358,7 @@ cerebro-mcp/
 │   │                         # memory, marketplace, heartbeat, threading
 │   ├── a2a/                  # A2A server, client, Agent Cards, lifecycle
 │   ├── vision/               # Image relay + interpreter
+│   ├── context-watcher/      # Token tracking + terminal dashboard
 │   ├── handover/             # Engine, context monitor, directory
 │   ├── notifications/        # Webhooks + push alerts
 │   ├── dashboard/            # Agent status dashboard

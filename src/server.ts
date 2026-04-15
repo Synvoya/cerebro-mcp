@@ -13,14 +13,30 @@ import {
   resumeFromToken,
   prepareHandoverToken,
 } from "./session/manager.js";
+import { recordToolCall, getStats, setWatcherEnabled, isWatcherEnabled, onUpdate, writeStateFile, openTerminal, closeTerminal } from "./context-watcher/index.js";
 import { createTask, updateTaskState } from "./session/store.js";
 import { v4 as uuidv4 } from "uuid";
 
 export function createCerebroServer(): McpServer {
   const server = new McpServer({
     name: "cerebro-mcp",
-    version: "0.1.0",
+    version: "2.2.0",
   });
+
+  // Context Watcher middleware — wraps all tools to auto-track calls
+  const originalTool = server.tool.bind(server);
+  (server as any).tool = function(name: string, desc: string, schema: any, handler: Function) {
+    const wrapped = async (args: any) => {
+      const t0 = Date.now();
+      const result = await handler(args);
+      if (isWatcherEnabled()) {
+        recordToolCall(name, args?.sessionId || null, Date.now() - t0);
+        writeStateFile(getStats());
+      }
+      return result;
+    };
+    return originalTool(name, desc, schema, wrapped);
+  };
 
   // ─── Session Tools ───────────────────────────────────────────
 
@@ -1303,6 +1319,26 @@ export function createCerebroServer(): McpServer {
       };
     }
   );
+
+  // Context Watcher Tools
+  server.tool("start_context_watcher", "Open a persistent terminal showing real-time token usage. Tracks every Cerebro tool call with estimated tokens and handover recommendation.", { sessionId: z.string().describe("Session ID to watch") }, async ({ sessionId }: { sessionId: string }) => {
+    const session = getSession(sessionId);
+    if (!session) return { content: [{ type: "text" as const, text: "Session not found" }], isError: true };
+    setWatcherEnabled(true);
+    onUpdate((stats) => writeStateFile(stats));
+    writeStateFile(getStats());
+    const result = openTerminal(sessionId);
+    return { content: [{ type: "text" as const, text: JSON.stringify({ tracking: true, terminal: result.success, error: result.error || null, message: result.success ? "Context Watcher is live! Terminal window showing real-time token usage." : "Tracking active but terminal failed: " + result.error, currentStats: getStats() }, null, 2) }] };
+  });
+
+  server.tool("stop_context_watcher", "Stop the Context Watcher and close terminal. Tracking data preserved.", {}, async () => {
+    const wasRunning = isWatcherEnabled();
+    const finalStats = getStats();
+    setWatcherEnabled(false);
+    onUpdate(null);
+    closeTerminal();
+    return { content: [{ type: "text" as const, text: JSON.stringify({ stopped: true, wasRunning, finalStats, message: wasRunning ? "Watcher stopped. " + finalStats.totalToolCalls + " calls, ~" + finalStats.totalEstimatedTokens + " tokens (" + finalStats.percentUsed + "%)." : "Watcher was not running." }, null, 2) }] };
+  });
 
   return server;
 }
