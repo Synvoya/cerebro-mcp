@@ -217,8 +217,8 @@ Control terminal behavior with natural language via configure_model:
 | "keep terminals open" | autoCloseTerminal: false | Terminals stay open for review (default) |
 | "no terminal" / "background mode" | spawnMode: background | CLI tasks run silently, no Terminal windows |
 | "show terminal" / "visible mode" | spawnMode: visible | Tasks open visible Terminal windows (default) |
-| "no watcher" / "disable watcher" | watcherAutoStart: false | Context Watcher will not auto-start |
-| "enable watcher" | watcherAutoStart: true | Context Watcher auto-starts (default) |
+| "no watcher" / "disable watcher" | watcherAutoStart: false | Context Watcher will not auto-start (default) |
+| "enable watcher" | watcherAutoStart: true | Context Watcher auto-starts |
 
 Combine freely. Example scenarios:
 
@@ -327,6 +327,21 @@ Cerebro: Scanning ~/Projects/my-app...
 |------|-------------|
 | `start_context_watcher` | Start real-time token tracking with a live terminal dashboard. |
 | `stop_context_watcher` | Stop the context watcher and close the dashboard. |
+
+### What the Context Watcher Tracks
+
+The Context Watcher estimates token usage — it does not read Claude's actual context window.
+
+| What | Tracked? | How |
+| --- | --- | --- |
+| Cerebro MCP tool calls (main Chat) | Yes | Counts each tool call, applies per-tool token estimates |
+| Conversation overhead (system prompt, tool defs) | Yes | Fixed 15k token base estimate |
+| Per-turn conversation cost | Yes | ~1500 tokens per tool call turn |
+| What happens inside spawned CLI terminals | No | Each terminal is an independent Claude Code session |
+| Claude's real context window size | No | No API available — all values are estimates |
+| Other MCP server calls | No | Only Cerebro tools are tracked |
+
+The watcher answers: "How full is my main Chat based on Cerebro tool call volume?" — which is what matters for knowing when to handover. It is off by default. Start it with start_context_watcher when you want visibility.
 
 ### Worker Configuration
 | Tool | What it does |

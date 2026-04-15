@@ -18,7 +18,7 @@ const config: ExtendedModelConfig = {
   perProvider: {},
   perAgent: {},
   autoCloseTerminal: false,
-  watcherAutoStart: true,
+  watcherAutoStart: false,
 };
 
 // ─── Session Defaults ────────────────────────────────────────────
