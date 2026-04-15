@@ -207,6 +207,31 @@ Cerebro: Discovering agent via Agent Card... connected.
 
 When your chat hits context limits, Cerebro generates a signed handover token. Paste it in a new chat and continue exactly where you left off. Sessions, agents, task history — everything transfers.
 
+### Terminal and Watcher Configuration
+
+Control terminal behavior with natural language via configure_model:
+
+| User says | Preference | Effect |
+| --- | --- | --- |
+| "auto close terminals" | autoCloseTerminal: true | Worker terminals close after task completes |
+| "keep terminals open" | autoCloseTerminal: false | Terminals stay open for review (default) |
+| "no terminal" / "background mode" | spawnMode: background | CLI tasks run silently, no Terminal windows |
+| "show terminal" / "visible mode" | spawnMode: visible | Tasks open visible Terminal windows (default) |
+| "no watcher" / "disable watcher" | watcherAutoStart: false | Context Watcher will not auto-start |
+| "enable watcher" | watcherAutoStart: true | Context Watcher auto-starts (default) |
+
+Combine freely. Example scenarios:
+
+| Scenario | Config | Behavior |
+| --- | --- | --- |
+| Full visibility (default) | none needed | Each task opens a Terminal. Watcher available. Terminals stay open |
+| Fire and forget | auto close terminals | Terminals open then close when done |
+| Silent mode | no terminal | Everything runs in background. Results in Chat |
+| Headless / VPS | background mode, disable watcher | No GUI needed. All results via MCP |
+| Visible + watcher | auto close terminals, enable watcher | Task terminals flash open/close. Watcher stays open |
+
+All preferences persist for the session. Change anytime via configure_model.
+
 ### Starter Kits
 
 Drop a `.cerebro/agents.json` in any project and agents auto-spawn on session start.

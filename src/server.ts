@@ -213,14 +213,15 @@ export function createCerebroServer(): McpServer {
       const { routeTask } = await import("./router/task-router.js");
       const { runAgentTask } = await import("./agents/agent-runner.js");
       const { spawnTask } = await import("./workers/terminal-spawner.js");
-      const { resolveModel, resolveEffort, resolveSpawnMode } = await import("./workers/model-config.js");
+      const { resolveModel, resolveEffort, resolveSpawnMode, getAutoCloseTerminal } = await import("./workers/model-config.js");
       const { getAgent } = await import("./session/store.js");
+      const globalAutoClose = getAutoCloseTerminal();
       // If a specific agent was requested, delegate directly
       if (targetAgent) {
         const agent = getAgent(targetAgent);
         if (agent) {
           // Execute asynchronously — don't block the MCP response
-          const agentResult = await runAgentTask(agent, taskId, sessionId, description, session.projectPath);
+          const agentResult = await runAgentTask(agent, taskId, sessionId, description, session.projectPath, { autoCloseTerminal: globalAutoClose });
 
           return {
             content: [{
@@ -247,7 +248,7 @@ export function createCerebroServer(): McpServer {
       if (route.target === "agent" && route.agentId) {
         const agent = getAgent(route.agentId);
         if (agent) {
-          const routedResult = await runAgentTask(agent, taskId, sessionId, description, session.projectPath);
+          const routedResult = await runAgentTask(agent, taskId, sessionId, description, session.projectPath, { autoCloseTerminal: globalAutoClose });
 
           return {
             content: [{
@@ -318,7 +319,7 @@ export function createCerebroServer(): McpServer {
       const { homedir } = await import("node:os");
       const { existsSync, mkdirSync } = await import("node:fs");
       const { runAgentTask } = await import("./agents/agent-runner.js");
-      const { resolveModel, resolveEffort, resolveSpawnMode } = await import("./workers/model-config.js");
+      const { resolveModel, resolveEffort, resolveSpawnMode, getAutoCloseTerminal } = await import("./workers/model-config.js");
 
       // Auto-detect provider from task description
       let resolvedProvider = (provider as any) || "claude-code";
@@ -389,7 +390,7 @@ export function createCerebroServer(): McpServer {
         session.id,
         task,
         resolvedPath,
-        { provider: resolvedProvider as any, model: resolvedModel, mode: resolveSpawnMode(), autoCloseTerminal }
+        { provider: resolvedProvider as any, model: resolvedModel, mode: resolveSpawnMode(), autoCloseTerminal: autoCloseTerminal ?? getAutoCloseTerminal() }
       );
 
       return {
@@ -935,13 +936,13 @@ export function createCerebroServer(): McpServer {
 
       // Resolve provider + model for visibility
       const { resolveProvider } = await import("./workers/pool.js");
-      const { resolveModel } = await import("./workers/model-config.js");
+      const { resolveModel, getAutoCloseTerminal } = await import("./workers/model-config.js");
       const provider = resolveProvider(agent.name) || resolveProvider(agent.description) || "claude-code";
       const model = resolveModel(provider, agentId);
 
       // Execute the task — spawns a visible Terminal window
       const { runAgentTask } = await import("./agents/agent-runner.js");
-      const result = await runAgentTask(agent, taskId, sessionId, task, projectPath, { autoCloseTerminal });
+      const result = await runAgentTask(agent, taskId, sessionId, task, projectPath, { autoCloseTerminal: autoCloseTerminal ?? getAutoCloseTerminal() });
 
       return {
         content: [
@@ -1267,7 +1268,7 @@ export function createCerebroServer(): McpServer {
       const {
         parseModelConfig, setDefaultModel, setDefaultEffort, setDefaultSpawnMode,
         setProviderModel, setProviderEffort, setAgentModel, setAgentEffort,
-        getModelConfig,
+        getModelConfig, setAutoCloseTerminal, setWatcherAutoStart,
       } = await import("./workers/model-config.js");
 
       const parsed = parseModelConfig(instruction);
@@ -1296,6 +1297,9 @@ export function createCerebroServer(): McpServer {
         setDefaultSpawnMode(parsed.spawnMode);
       }
 
+      if (parsed.autoCloseTerminal !== undefined) setAutoCloseTerminal(parsed.autoCloseTerminal);
+      if (parsed.watcherAutoStart !== undefined) setWatcherAutoStart(parsed.watcherAutoStart);
+
       const config = getModelConfig();
 
       return {
@@ -1321,12 +1325,18 @@ export function createCerebroServer(): McpServer {
   );
 
   // Context Watcher Tools
-  server.tool("start_context_watcher", "Open a persistent terminal showing real-time token usage. Tracks every Cerebro tool call with estimated tokens and handover recommendation.", { sessionId: z.string().describe("Session ID to watch") }, async ({ sessionId }: { sessionId: string }) => {
+  let watcherAutoCloseTerminal = false;
+
+  server.tool("start_context_watcher", "Open a persistent terminal showing real-time token usage. Tracks every Cerebro tool call with estimated tokens and handover recommendation.", { sessionId: z.string().describe("Session ID to watch"), noTerminal: z.boolean().optional().describe("If true, tracks tokens silently without opening a terminal window. Stats available via get_context_health. Default: false."), autoCloseTerminal: z.boolean().optional().describe("If true, terminal closes automatically when stop_context_watcher is called. Default: false (terminal stays open).") }, async ({ sessionId, noTerminal, autoCloseTerminal }: { sessionId: string; noTerminal?: boolean; autoCloseTerminal?: boolean }) => {
     const session = getSession(sessionId);
     if (!session) return { content: [{ type: "text" as const, text: "Session not found" }], isError: true };
     setWatcherEnabled(true);
     onUpdate((stats) => writeStateFile(stats));
     writeStateFile(getStats());
+    watcherAutoCloseTerminal = autoCloseTerminal === true;
+    if (noTerminal) {
+      return { content: [{ type: "text" as const, text: JSON.stringify({ tracking: true, terminal: false, silent: true, message: "Context Watcher tracking active in silent mode. Use get_context_health to check stats.", currentStats: getStats() }, null, 2) }] };
+    }
     const result = openTerminal(sessionId);
     return { content: [{ type: "text" as const, text: JSON.stringify({ tracking: true, terminal: result.success, error: result.error || null, message: result.success ? "Context Watcher is live! Terminal window showing real-time token usage." : "Tracking active but terminal failed: " + result.error, currentStats: getStats() }, null, 2) }] };
   });
@@ -1336,8 +1346,13 @@ export function createCerebroServer(): McpServer {
     const finalStats = getStats();
     setWatcherEnabled(false);
     onUpdate(null);
-    closeTerminal();
-    return { content: [{ type: "text" as const, text: JSON.stringify({ stopped: true, wasRunning, finalStats, message: wasRunning ? "Watcher stopped. " + finalStats.totalToolCalls + " calls, ~" + finalStats.totalEstimatedTokens + " tokens (" + finalStats.percentUsed + "%)." : "Watcher was not running." }, null, 2) }] };
+    let terminalClosed = false;
+    if (watcherAutoCloseTerminal) {
+      closeTerminal();
+      terminalClosed = true;
+      watcherAutoCloseTerminal = false;
+    }
+    return { content: [{ type: "text" as const, text: JSON.stringify({ stopped: true, wasRunning, terminalClosed, finalStats, message: wasRunning ? "Watcher stopped. " + finalStats.totalToolCalls + " calls, ~" + finalStats.totalEstimatedTokens + " tokens (" + finalStats.percentUsed + "%)." + (terminalClosed ? " Terminal closed." : " Terminal left open.") : "Watcher was not running." }, null, 2) }] };
   });
 
   return server;

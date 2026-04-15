@@ -6,12 +6,19 @@
 
 import type { EffortLevel, SpawnMode, ModelConfig, CliProvider } from "../types/index.js";
 
-const config: ModelConfig = {
+interface ExtendedModelConfig extends ModelConfig {
+  autoCloseTerminal: boolean;
+  watcherAutoStart: boolean;
+}
+
+const config: ExtendedModelConfig = {
   defaultModel: null,       // null = use CLI's own default
   defaultEffort: "medium",
   defaultSpawnMode: "visible",
   perProvider: {},
   perAgent: {},
+  autoCloseTerminal: false,
+  watcherAutoStart: true,
 };
 
 // ─── Session Defaults ────────────────────────────────────────────
@@ -80,9 +87,29 @@ export function resolveSpawnMode(): SpawnMode {
   return config.defaultSpawnMode;
 }
 
+// ─── Auto-Close Terminal ────────────────────────────────────────
+
+export function setAutoCloseTerminal(enabled: boolean): void {
+  config.autoCloseTerminal = enabled;
+}
+
+export function getAutoCloseTerminal(): boolean {
+  return config.autoCloseTerminal;
+}
+
+// ─── Watcher Auto-Start ─────────────────────────────────────────
+
+export function setWatcherAutoStart(enabled: boolean): void {
+  config.watcherAutoStart = enabled;
+}
+
+export function getWatcherAutoStart(): boolean {
+  return config.watcherAutoStart;
+}
+
 // ─── Get Full Config ─────────────────────────────────────────────
 
-export function getModelConfig(): ModelConfig {
+export function getModelConfig(): ExtendedModelConfig {
   return { ...config };
 }
 
@@ -92,6 +119,8 @@ export function parseModelConfig(instruction: string): {
   model?: string;
   effort?: EffortLevel;
   spawnMode?: SpawnMode;
+  autoCloseTerminal?: boolean;
+  watcherAutoStart?: boolean;
   forProvider?: string;
   forAgent?: string;
 } {
@@ -131,10 +160,24 @@ export function parseModelConfig(instruction: string): {
   }
 
   // Spawn mode detection
-  if (lower.includes("background") || lower.includes("silent") || lower.includes("hidden")) {
+  if (lower.includes("background") || lower.includes("silent") || lower.includes("hidden") || lower.includes("no terminal") || lower.includes("headless")) {
     result.spawnMode = "background";
   } else if (lower.includes("visible") || lower.includes("show terminal") || lower.includes("show window")) {
     result.spawnMode = "visible";
+  }
+
+  // Auto-close terminal detection
+  if (lower.includes("auto close") || lower.includes("autoclose")) {
+    result.autoCloseTerminal = true;
+  } else if (lower.includes("keep open") || lower.includes("no auto close")) {
+    result.autoCloseTerminal = false;
+  }
+
+  // Watcher auto-start detection
+  if (lower.includes("no watcher") || lower.includes("disable watcher")) {
+    result.watcherAutoStart = false;
+  } else if (lower.includes("enable watcher")) {
+    result.watcherAutoStart = true;
   }
 
   // Provider targeting
