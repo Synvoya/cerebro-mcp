@@ -76,6 +76,19 @@ No sessions to create. No agents to configure. Just describe what you want and w
 
 ## What's New
 
+### v2.3.0 — Shell Safety + Execution Modes (April 2026)
+
+- **Interactive Mode** (new default) — See Claude Code's live thinking, tool calls, and file operations in the terminal. No more blind waits.
+- **Quiet Mode** — Say "quiet mode" to show only task + result. Previous default behavior.
+- **Shell Escaping Fix** — Task descriptions with backticks, quotes, and special characters no longer break terminals.
+- **executionMode** preference via configure_model — "show thinking", "hide execution", "interactive", "quiet".
+
+### v2.2.0 — Context Watcher (April 2026)
+
+- **Context Watcher** — start_context_watcher opens a persistent terminal showing real-time token usage, progress bar, and handover recommendations. Off by default.
+- **Terminal Preferences** — Global auto-close, no-terminal, and watcher toggles via configure_model.
+- **30 MCP Tools** — Two new tools: start_context_watcher, stop_context_watcher.
+
 ### v2.1.0 — All Tools Working (April 2026)
 
 Every single one of Cerebro's 28 tools now works for real. No stubs, no placeholders, no "coming soon."
