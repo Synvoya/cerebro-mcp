@@ -20,7 +20,7 @@ import { v4 as uuidv4 } from "uuid";
 export function createCerebroServer(): McpServer {
   const server = new McpServer({
     name: "cerebro-mcp",
-    version: "2.2.0",
+    version: "2.3.0",
   });
 
   // Context Watcher middleware — wraps all tools to auto-track calls
@@ -1269,6 +1269,7 @@ export function createCerebroServer(): McpServer {
         parseModelConfig, setDefaultModel, setDefaultEffort, setDefaultSpawnMode,
         setProviderModel, setProviderEffort, setAgentModel, setAgentEffort,
         getModelConfig, setAutoCloseTerminal, setWatcherAutoStart,
+        setDefaultExecutionMode, resolveExecutionMode,
       } = await import("./workers/model-config.js");
 
       const parsed = parseModelConfig(instruction);
@@ -1298,6 +1299,7 @@ export function createCerebroServer(): McpServer {
       }
 
       if (parsed.autoCloseTerminal !== undefined) setAutoCloseTerminal(parsed.autoCloseTerminal);
+      if (parsed.executionMode !== undefined) setDefaultExecutionMode(parsed.executionMode);
       if (parsed.watcherAutoStart !== undefined) setWatcherAutoStart(parsed.watcherAutoStart);
 
       const config = getModelConfig();
@@ -1312,6 +1314,7 @@ export function createCerebroServer(): McpServer {
                 defaultModel: config.defaultModel || "CLI default",
                 defaultEffort: config.defaultEffort,
                 spawnMode: config.defaultSpawnMode,
+                executionMode: resolveExecutionMode(),
                 perProvider: Object.keys(config.perProvider).length > 0 ? config.perProvider : "none",
                 perAgent: Object.keys(config.perAgent).length > 0 ? config.perAgent : "none",
               },

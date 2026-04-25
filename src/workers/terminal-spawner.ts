@@ -4,39 +4,41 @@
 // Mac: uses osascript (AppleScript) to open Terminal.app
 // Linux: uses x-terminal-emulator or gnome-terminal
 // Fallback: background subprocess
-
 import { spawn, execSync } from "node:child_process";
 import { writeFileSync, readFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, platform } from "node:os";
-import type { TaskResult, Artifact, CliProvider } from "../types/index.js";
-import { getProvider } from "./cli-worker.js";
+import { resolveExecutionMode } from "./model-config.js";
 
-export type SpawnMode = "visible" | "background";
+const CEREBRO_TMP = join(tmpdir(), "cerebro-workers");
 
-interface TerminalSpawnOptions {
+export interface SpawnOptions {
   taskId: string;
   agentName: string;
   taskDescription: string;
-  provider: CliProvider;
+  provider: string;
   cwd: string;
-  mode: SpawnMode;
+  mode: "visible" | "background";
   model?: string;
   effort?: string;
   customCommand?: string;
   autoCloseTerminal?: boolean;
+  executionMode?: "interactive" | "quiet";
 }
 
-const CEREBRO_TMP = join(tmpdir(), "cerebro-workers");
+export interface SpawnResult {
+  success: boolean;
+  output: string;
+  artifacts: Array<{ type: "file" | "text" | "data" | "image"; name: string; content: string }>;
+  duration: number;
+  error?: string;
+}
 
 /**
  * Execute a task with either a visible terminal or background process.
  */
-export async function spawnTask(
-  options: TerminalSpawnOptions
-): Promise<TaskResult> {
+export async function spawnTask(options: SpawnOptions): Promise<SpawnResult> {
   mkdirSync(CEREBRO_TMP, { recursive: true });
-
   if (options.mode === "visible") {
     return spawnVisibleTerminal(options);
   }
@@ -44,24 +46,31 @@ export async function spawnTask(
 }
 
 // ─── Visible Terminal ────────────────────────────────────────────
-
-async function spawnVisibleTerminal(
-  options: TerminalSpawnOptions
-): Promise<TaskResult> {
+async function spawnVisibleTerminal(options: SpawnOptions): Promise<SpawnResult> {
   const { taskId, agentName, taskDescription, provider, cwd, model, effort, customCommand } = options;
   const startTime = Date.now();
 
-  const cliCommand = customCommand || buildCliCommand(provider, taskDescription, cwd, model, effort);
+  // Resolve execution mode: interactive (default) or quiet
+  const execMode = options.executionMode || resolveExecutionMode();
+
+  const cliCommand = customCommand || buildCliCommand(provider, taskId, cwd, model, effort, execMode);
   const logFile = join(CEREBRO_TMP, `task-${taskId}.log`);
   const exitFile = join(CEREBRO_TMP, `task-${taskId}.exit`);
   const scriptFile = join(CEREBRO_TMP, `task-${taskId}.sh`);
+  const taskFile = join(CEREBRO_TMP, `task-${taskId}.txt`);
 
   // Clean up any previous files
   for (const f of [logFile, exitFile]) {
     if (existsSync(f)) unlinkSync(f);
   }
 
-  // Create the wrapper script
+  // ─── SHELL ESCAPE FIX ───────────────────────────────────────
+  // Write task description to a separate file instead of inlining
+  // it in the bash script. This prevents backticks, quotes, $(),
+  // and other special characters from breaking the shell.
+  writeFileSync(taskFile, taskDescription, { mode: 0o644 });
+
+  // Create the wrapper script — task text is read from file, never inlined
   const script = `#!/bin/bash
 clear
 echo ""
@@ -70,22 +79,23 @@ echo "  ────────────────────────
 echo "  Agent:    ${agentName}"
 echo "  Provider: ${provider}"
 ${(() => {
-  if (provider === "codex") {
-    const isAnthropicModel = model && (model.toLowerCase().includes("sonnet") || model.toLowerCase().includes("opus") || model.toLowerCase().includes("haiku") || model.toLowerCase().includes("claude"));
-    if (!model || isAnthropicModel) return 'echo "  Model:    gpt-5.4 (Codex default)"';
-    return `echo "  Model:    ${model}"`;
-  }
-  return model ? `echo "  Model:    ${model}"` : '';
-})()}
+    if (provider === "codex") {
+      const isAnthropicModel = model && (model.toLowerCase().includes("sonnet") || model.toLowerCase().includes("opus") || model.toLowerCase().includes("haiku") || model.toLowerCase().includes("claude"));
+      if (!model || isAnthropicModel) return 'echo "  Model:    gpt-5.4 (Codex default)"';
+      return `echo "  Model:    ${model}"`;
+    }
+    return model ? `echo "  Model:    ${model}"` : '';
+  })()}
 ${effort ? `echo "  Effort:   ${effort}"` : ""}
-echo "  Task:     ${taskDescription.replace(/"/g, '\\"').slice(0, 1000)}"
+echo "  Mode:     ${execMode}"
+echo "  ─────────────────────────────────────────"
+echo ""
+echo "  Task:"
+cat "${taskFile}" | head -20 | sed 's/^/    /'
+echo ""
 echo "  ─────────────────────────────────────────"
 echo ""
 echo "  Working directory: ${cwd}"
-echo ""
-echo "  \$ ${cliCommand.replace(/"/g, '\\"').slice(0, 300)}"
-echo ""
-echo "  ─────────────────────────────────────────"
 echo ""
 
 # Auto-init git for Codex (requires git repo)
@@ -122,6 +132,9 @@ if [ \$EXIT_CODE -eq 0 ]; then
   fi
 fi
 
+# Clean up task file
+rm -f "${taskFile}" 2>/dev/null
+
 ${options.autoCloseTerminal ? '# Auto-closing terminal\nexit 0' : '# Keep window open for user to read\necho "  Terminal will stay open for review."\necho "  Close this window when done."'}
 `;
 
@@ -152,12 +165,11 @@ function openMacTerminal(scriptFile: string, title: string): void {
   const appleScript = `
     tell application "Terminal"
       activate
-      set newTab to do script "bash \\"${scriptFile}\\""
-      set custom title of front window to "Cerebro: ${title.replace(/["\\\\']/g, ' ')}"
+      set newTab to do script "bash \\\\"${scriptFile}\\\\""
+      set custom title of front window to "Cerebro: ${title.replace(/["\\\\\']/g, ' ')}"
     end tell
   `;
-
-  execSync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`);
+  execSync(`osascript -e '${appleScript.replace(/'/g, "'\\\\''")}'`);
 }
 
 function openLinuxTerminal(scriptFile: string, title: string): void {
@@ -166,7 +178,6 @@ function openLinuxTerminal(scriptFile: string, title: string): void {
     { cmd: "xterm", args: ["-title", `Cerebro: ${title}`, "-e", `bash ${scriptFile}`] },
     { cmd: "x-terminal-emulator", args: ["-e", `bash ${scriptFile}`] },
   ];
-
   for (const term of terminals) {
     try {
       execSync(`which ${term.cmd}`);
@@ -176,27 +187,26 @@ function openLinuxTerminal(scriptFile: string, title: string): void {
       continue;
     }
   }
-
   throw new Error("No supported terminal emulator found");
 }
 
 // ─── Background Mode ─────────────────────────────────────────────
-
-async function spawnBackground(
-  options: TerminalSpawnOptions
-): Promise<TaskResult> {
+async function spawnBackground(options: SpawnOptions): Promise<SpawnResult> {
   const { taskId, taskDescription, provider, cwd, model, effort, customCommand } = options;
   const startTime = Date.now();
+  const execMode = options.executionMode || resolveExecutionMode();
+  const cliCommand = customCommand || buildCliCommand(provider, taskId, cwd, model, effort, execMode);
 
-  const cliCommand = customCommand || buildCliCommand(provider, taskDescription, cwd, model, effort);
-
-  return new Promise<TaskResult>((resolve) => {
+  return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
 
+    const resolvedCwd = existsSync(cwd) ? cwd :
+      (existsSync(cwd.replace(/^~/, process.env.HOME || "")) ? cwd.replace(/^~/, process.env.HOME || "") : process.cwd());
+
     const proc = spawn("sh", ["-c", cliCommand], {
-      cwd: existsSync(cwd) ? cwd : (existsSync(cwd.replace(/^~/, process.env.HOME || "")) ? cwd.replace(/^~/, process.env.HOME || "") : process.cwd()),
+      cwd: resolvedCwd,
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -210,12 +220,11 @@ async function spawnBackground(
     proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
     proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
 
-    proc.on("close", (code) => {
+    proc.on("close", (code: number | null) => {
       clearTimeout(timer);
       const duration = Date.now() - startTime;
       const success = !timedOut && code === 0;
-      const artifacts: Artifact[] = [];
-
+      const artifacts: Array<{ type: "file" | "text" | "data" | "image"; name: string; content: string }> = [];
       if (stdout.trim()) {
         artifacts.push({ type: "text", name: "stdout", content: stdout.trim() });
       }
@@ -233,7 +242,7 @@ async function spawnBackground(
       });
     });
 
-    proc.on("error", (err) => {
+    proc.on("error", (err: Error) => {
       clearTimeout(timer);
       resolve({
         success: false, output: "", artifacts: [], duration: Date.now() - startTime,
@@ -244,68 +253,72 @@ async function spawnBackground(
 }
 
 // ─── CLI Command Builder ─────────────────────────────────────────
-
+// Task is read from a temp file — never inlined into the shell command.
+// This prevents all shell escaping issues with backticks, quotes, $(), etc.
 function buildCliCommand(
-  provider: CliProvider,
-  task: string,
+  provider: string,
+  taskId: string,
   cwd: string,
   model?: string,
-  effort?: string
+  effort?: string,
+  executionMode: "interactive" | "quiet" = "interactive",
 ): string {
-  const safeTask = task.replace(/'/g, "'\\''");
+  const taskFile = join(CEREBRO_TMP, `task-${taskId}.txt`);
 
   switch (provider) {
     case "claude-code": {
       const args: string[] = [];
-      // Only pass --model if it's NOT an Anthropic model (Codex only understands OpenAI models)
-      const isAnthropicModel = model && (
-        model.toLowerCase().includes("sonnet") ||
+
+      // Only pass --model if it's NOT an Anthropic model
+      const isAnthropicModel = model && (model.toLowerCase().includes("sonnet") ||
         model.toLowerCase().includes("opus") ||
         model.toLowerCase().includes("haiku") ||
-        model.toLowerCase().includes("claude")
-      );
+        model.toLowerCase().includes("claude"));
       if (model && !isAnthropicModel) args.push("--model", model);
-      args.push("--dangerously-skip-permissions", "--print", `'${safeTask}'`);
-      return `claude ${args.join(" ")}`;
+
+      args.push("--dangerously-skip-permissions");
+
+      // Execution mode: interactive shows live agent thinking, quiet shows only result
+      if (executionMode === "quiet") {
+        args.push("--print");
+      }
+
+      // Read task from file — safe from all shell escaping issues
+      return `claude ${args.join(" ")} "$(cat '${taskFile}')"`;
     }
 
     case "codex": {
       const args: string[] = ["exec"];
-      // Only pass --model if it's NOT an Anthropic model (Codex only understands OpenAI models)
-      const isAnthropicModel = model && (
-        model.toLowerCase().includes("sonnet") ||
+      const isAnthropicModel = model && (model.toLowerCase().includes("sonnet") ||
         model.toLowerCase().includes("opus") ||
         model.toLowerCase().includes("haiku") ||
-        model.toLowerCase().includes("claude")
-      );
+        model.toLowerCase().includes("claude"));
       if (model && !isAnthropicModel) args.push("--model", model);
       args.push("--full-auto");
-      args.push(`'${safeTask}'`);
-      return `codex ${args.join(" ")}`;
+      return `codex ${args.join(" ")} "$(cat '${taskFile}')"`;
     }
 
     case "aider": {
       const args: string[] = [];
       if (model) args.push("--model", model);
-      args.push("--message", `'${safeTask}'`, "--yes-always");
-      return `aider ${args.join(" ")}`;
+      args.push("--message");
+      return `aider ${args.join(" ")} "$(cat '${taskFile}')" --yes-always`;
     }
 
     case "generic":
     default:
-      return safeTask;
+      return `bash '${taskFile}'`;
   }
 }
 
 // ─── Result Polling ──────────────────────────────────────────────
-
 async function pollForResult(
   taskId: string,
   logFile: string,
   exitFile: string,
   startTime: number,
-  timeout: number
-): Promise<TaskResult> {
+  timeout: number,
+): Promise<SpawnResult> {
   const pollInterval = 2000;
   const maxPolls = Math.ceil(timeout / pollInterval);
 
@@ -323,9 +336,12 @@ async function pollForResult(
         unlinkSync(exitFile);
         if (existsSync(logFile)) unlinkSync(logFile);
         unlinkSync(join(CEREBRO_TMP, `task-${taskId}.sh`));
+        // Task file cleaned up by the script itself, but just in case:
+        const taskFile = join(CEREBRO_TMP, `task-${taskId}.txt`);
+        if (existsSync(taskFile)) unlinkSync(taskFile);
       } catch { /* ignore cleanup errors */ }
 
-      const artifacts: Artifact[] = [];
+      const artifacts: Array<{ type: "file" | "text" | "data" | "image"; name: string; content: string }> = [];
       if (output.trim()) {
         artifacts.push({ type: "text", name: "output", content: output.trim() });
       }

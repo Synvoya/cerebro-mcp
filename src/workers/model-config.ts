@@ -4,67 +4,64 @@
 // 2. Per-agent defaults: "The Coder agent should use Opus"
 // 3. Per-task override: "Run this with Sonnet on low effort"
 
-import type { EffortLevel, SpawnMode, ModelConfig, CliProvider } from "../types/index.js";
-
-interface ExtendedModelConfig extends ModelConfig {
-  autoCloseTerminal: boolean;
-  watcherAutoStart: boolean;
+interface ProviderConfig {
+  model?: string;
+  effort?: string;
 }
 
-const config: ExtendedModelConfig = {
-  defaultModel: null,       // null = use CLI's own default
-  defaultEffort: "medium",
-  defaultSpawnMode: "visible",
-  perProvider: {},
-  perAgent: {},
+interface AgentConfig {
+  model?: string;
+  effort?: string;
+}
+
+const config = {
+  defaultModel: null as string | null,         // null = use CLI's own default
+  defaultEffort: "medium" as string,
+  defaultSpawnMode: "visible" as "visible" | "background",
+  defaultExecutionMode: "interactive" as "interactive" | "quiet",
+  perProvider: {} as Record<string, ProviderConfig>,
+  perAgent: {} as Record<string, AgentConfig>,
   autoCloseTerminal: false,
   watcherAutoStart: false,
 };
 
 // ─── Session Defaults ────────────────────────────────────────────
-
-export function setDefaultModel(model: string): void {
+export function setDefaultModel(model: string | null): void {
   config.defaultModel = model;
 }
-
-export function setDefaultEffort(effort: EffortLevel): void {
+export function setDefaultEffort(effort: string): void {
   config.defaultEffort = effort;
 }
-
-export function setDefaultSpawnMode(mode: SpawnMode): void {
+export function setDefaultSpawnMode(mode: "visible" | "background"): void {
   config.defaultSpawnMode = mode;
+}
+export function setDefaultExecutionMode(mode: "interactive" | "quiet"): void {
+  config.defaultExecutionMode = mode;
 }
 
 // ─── Per-Provider Config ─────────────────────────────────────────
-
 export function setProviderModel(provider: string, model: string): void {
   if (!config.perProvider[provider]) config.perProvider[provider] = {};
   config.perProvider[provider].model = model;
 }
-
-export function setProviderEffort(provider: string, effort: EffortLevel): void {
+export function setProviderEffort(provider: string, effort: string): void {
   if (!config.perProvider[provider]) config.perProvider[provider] = {};
   config.perProvider[provider].effort = effort;
 }
 
 // ─── Per-Agent Config ────────────────────────────────────────────
-
 export function setAgentModel(agentId: string, model: string): void {
   if (!config.perAgent[agentId]) config.perAgent[agentId] = {};
   config.perAgent[agentId].model = model;
 }
-
-export function setAgentEffort(agentId: string, effort: EffortLevel): void {
+export function setAgentEffort(agentId: string, effort: string): void {
   if (!config.perAgent[agentId]) config.perAgent[agentId] = {};
   config.perAgent[agentId].effort = effort;
 }
 
 // ─── Resolution (per-task > per-agent > per-provider > default) ──
-
 export function resolveModel(
-  provider?: string,
-  agentId?: string,
-  taskOverride?: string
+  provider?: string, agentId?: string, taskOverride?: string,
 ): string | undefined {
   if (taskOverride) return taskOverride;
   if (agentId && config.perAgent[agentId]?.model) return config.perAgent[agentId].model;
@@ -73,59 +70,58 @@ export function resolveModel(
 }
 
 export function resolveEffort(
-  provider?: string,
-  agentId?: string,
-  taskOverride?: EffortLevel
-): EffortLevel {
+  provider?: string, agentId?: string, taskOverride?: string,
+): string {
   if (taskOverride) return taskOverride;
-  if (agentId && config.perAgent[agentId]?.effort) return config.perAgent[agentId].effort!;
-  if (provider && config.perProvider[provider]?.effort) return config.perProvider[provider].effort!;
+  if (agentId && config.perAgent[agentId]?.effort) return config.perAgent[agentId].effort;
+  if (provider && config.perProvider[provider]?.effort) return config.perProvider[provider].effort;
   return config.defaultEffort;
 }
 
-export function resolveSpawnMode(): SpawnMode {
+export function resolveSpawnMode(): "visible" | "background" {
   return config.defaultSpawnMode;
 }
 
-// ─── Auto-Close Terminal ────────────────────────────────────────
+export function resolveExecutionMode(): "interactive" | "quiet" {
+  return config.defaultExecutionMode;
+}
 
+// ─── Auto-Close Terminal ────────────────────────────────────────
 export function setAutoCloseTerminal(enabled: boolean): void {
   config.autoCloseTerminal = enabled;
 }
-
 export function getAutoCloseTerminal(): boolean {
   return config.autoCloseTerminal;
 }
 
 // ─── Watcher Auto-Start ─────────────────────────────────────────
-
 export function setWatcherAutoStart(enabled: boolean): void {
   config.watcherAutoStart = enabled;
 }
-
 export function getWatcherAutoStart(): boolean {
   return config.watcherAutoStart;
 }
 
 // ─── Get Full Config ─────────────────────────────────────────────
-
-export function getModelConfig(): ExtendedModelConfig {
+export function getModelConfig() {
   return { ...config };
 }
 
 // ─── Natural Language Parser ─────────────────────────────────────
-
-export function parseModelConfig(instruction: string): {
+export interface ParsedConfig {
   model?: string;
-  effort?: EffortLevel;
-  spawnMode?: SpawnMode;
+  effort?: string;
+  spawnMode?: "visible" | "background";
+  executionMode?: "interactive" | "quiet";
   autoCloseTerminal?: boolean;
   watcherAutoStart?: boolean;
   forProvider?: string;
   forAgent?: string;
-} {
+}
+
+export function parseModelConfig(instruction: string): ParsedConfig {
   const lower = instruction.toLowerCase();
-  const result: ReturnType<typeof parseModelConfig> = {};
+  const result: ParsedConfig = {};
 
   // Model detection
   const modelPatterns: Record<string, string> = {
@@ -140,7 +136,6 @@ export function parseModelConfig(instruction: string): {
     "claude-4-opus": "claude-4-opus",
     "claude-4-sonnet": "claude-4-sonnet",
   };
-
   for (const [keyword, model] of Object.entries(modelPatterns)) {
     if (lower.includes(keyword)) {
       result.model = model;
@@ -159,11 +154,23 @@ export function parseModelConfig(instruction: string): {
     result.effort = "medium";
   }
 
-  // Spawn mode detection
-  if (lower.includes("background") || lower.includes("silent") || lower.includes("hidden") || lower.includes("no terminal") || lower.includes("headless")) {
+  // Spawn mode detection (visible terminal vs background)
+  if (lower.includes("background") || lower.includes("silent") || lower.includes("hidden") ||
+      lower.includes("no terminal") || lower.includes("headless")) {
     result.spawnMode = "background";
   } else if (lower.includes("visible") || lower.includes("show terminal") || lower.includes("show window")) {
     result.spawnMode = "visible";
+  }
+
+  // Execution mode detection (interactive vs quiet)
+  // Interactive: user sees Claude Code's thinking, tool calls, file reads live
+  // Quiet: user only sees the task description and final result
+  if (lower.includes("interactive") || lower.includes("show thinking") ||
+      lower.includes("show execution") || lower.includes("verbose")) {
+    result.executionMode = "interactive";
+  } else if (lower.includes("quiet") || lower.includes("hide execution") ||
+             lower.includes("hide thinking") || lower.includes("print only")) {
+    result.executionMode = "quiet";
   }
 
   // Auto-close terminal detection

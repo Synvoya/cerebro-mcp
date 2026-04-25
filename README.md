@@ -217,6 +217,8 @@ Control terminal behavior with natural language via configure_model:
 | "keep terminals open" | autoCloseTerminal: false | Terminals stay open for review (default) |
 | "no terminal" / "background mode" | spawnMode: background | CLI tasks run silently, no Terminal windows |
 | "show terminal" / "visible mode" | spawnMode: visible | Tasks open visible Terminal windows (default) |
+| "interactive" / "show thinking" | executionMode: interactive | See Claude Code thinking and tool calls live in terminal (default) |
+| "quiet" / "hide execution" | executionMode: quiet | Terminal shows only task description and final result |
 | "no watcher" / "disable watcher" | watcherAutoStart: false | Context Watcher will not auto-start (default) |
 | "enable watcher" | watcherAutoStart: true | Context Watcher auto-starts |
 
@@ -229,6 +231,7 @@ Combine freely. Example scenarios:
 | Silent mode | no terminal | Everything runs in background. Results in Chat |
 | Headless / VPS | background mode, disable watcher | No GUI needed. All results via MCP |
 | Visible + watcher | auto close terminals, enable watcher | Task terminals flash open/close. Watcher stays open |
+| Quiet terminals | quiet mode | Terminals open but only show task + result |
 
 All preferences persist for the session. Change anytime via configure_model.
 

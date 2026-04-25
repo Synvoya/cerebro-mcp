@@ -3,21 +3,27 @@
 // Zero-credential: Cerebro never stores or proxies credentials.
 // Each CLI tool manages its own auth (claude login, codex auth, etc.)
 // Cerebro spawns subprocesses that inherit the system's authentication context.
-
 import { spawn } from "node:child_process";
-import type { TaskResult, Artifact, CliProvider, CliProviderConfig } from "../types/index.js";
 
 // ─── Provider Adapters ───────────────────────────────────────────
 // Each adapter knows how to format instructions for its CLI tool.
+interface ProviderConfig {
+  provider: string;
+  binary: string;
+  available: boolean;
+  taskCategories: string[];
+  formatArgs: (task: string) => string[];
+  versionCommand: string;
+}
 
-const PROVIDERS: Record<CliProvider, CliProviderConfig> = {
+const PROVIDERS: Record<string, ProviderConfig> = {
   "claude-code": {
     provider: "claude-code",
     binary: "claude",
     available: false,
     taskCategories: ["coding", "build", "test", "debug", "refactor", "deploy", "file-creation"],
-    formatArgs: (task: string, _cwd: string) => [
-      "--print", task,
+    formatArgs: (task: string) => [
+      task,  // No --print by default — interactive mode shows agent thinking
     ],
     versionCommand: "claude --version",
   },
@@ -26,7 +32,7 @@ const PROVIDERS: Record<CliProvider, CliProviderConfig> = {
     binary: "codex",
     available: false,
     taskCategories: ["coding", "review", "test", "explain"],
-    formatArgs: (task: string, _cwd: string) => [
+    formatArgs: (task: string) => [
       "--quiet", task,
     ],
     versionCommand: "codex --version",
@@ -36,7 +42,7 @@ const PROVIDERS: Record<CliProvider, CliProviderConfig> = {
     binary: "aider",
     available: false,
     taskCategories: ["coding", "refactor", "pair-programming"],
-    formatArgs: (task: string, _cwd: string) => [
+    formatArgs: (task: string) => [
       "--message", task, "--yes-always",
     ],
     versionCommand: "aider --version",
@@ -46,7 +52,7 @@ const PROVIDERS: Record<CliProvider, CliProviderConfig> = {
     binary: "sh",
     available: true,
     taskCategories: ["shell", "script", "command"],
-    formatArgs: (task: string, _cwd: string) => [
+    formatArgs: (task: string) => [
       "-c", task,
     ],
     versionCommand: "sh --version",
@@ -54,31 +60,27 @@ const PROVIDERS: Record<CliProvider, CliProviderConfig> = {
 };
 
 // ─── Provider Detection ──────────────────────────────────────────
-
 /**
  * Detect which CLI providers are available on the system.
  * Runs version check for each provider.
  */
-export async function detectAvailableProviders(): Promise<CliProviderConfig[]> {
-  const results: CliProviderConfig[] = [];
-
+export async function detectAvailableProviders(): Promise<ProviderConfig[]> {
+  const results: ProviderConfig[] = [];
   for (const [key, config] of Object.entries(PROVIDERS)) {
     const available = await checkProviderAvailable(config.versionCommand);
     config.available = available;
     if (available) results.push(config);
   }
-
   // Generic shell is always available
   if (!results.some((r) => r.provider === "generic")) {
     PROVIDERS.generic.available = true;
     results.push(PROVIDERS.generic);
   }
-
   return results;
 }
 
 async function checkProviderAvailable(versionCommand: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
+  return new Promise((resolve) => {
     const proc = spawn("sh", ["-c", versionCommand], {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 5000,
@@ -91,24 +93,30 @@ async function checkProviderAvailable(versionCommand: string): Promise<boolean> 
 /**
  * Get a specific provider's config.
  */
-export function getProvider(provider: CliProvider): CliProviderConfig {
+export function getProvider(provider: string): ProviderConfig {
   return PROVIDERS[provider] || PROVIDERS.generic;
 }
 
 /**
  * Get all registered providers.
  */
-export function getAllProviders(): CliProviderConfig[] {
+export function getAllProviders(): ProviderConfig[] {
   return Object.values(PROVIDERS);
 }
 
-// ─── Task Execution ──────────────────────────────────────────────
-
-interface CliExecOptions {
+export interface CliTaskOptions {
   command: string;
   cwd: string;
   timeout?: number;
   env?: Record<string, string>;
+}
+
+export interface CliTaskResult {
+  success: boolean;
+  output: string;
+  artifacts: Array<{ type: string; name: string; content: string }>;
+  duration: number;
+  error?: string;
 }
 
 /**
@@ -116,13 +124,11 @@ interface CliExecOptions {
  * Each execution is a fresh process — anti-context-rot by design.
  * Zero-credential: subprocess inherits system auth context automatically.
  */
-export async function executeCliTask(
-  options: CliExecOptions
-): Promise<TaskResult> {
+export async function executeCliTask(options: CliTaskOptions): Promise<CliTaskResult> {
   const { command, cwd, timeout = 300000, env } = options;
   const startTime = Date.now();
 
-  return new Promise<TaskResult>((resolve) => {
+  return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -139,18 +145,12 @@ export async function executeCliTask(
       setTimeout(() => proc.kill("SIGKILL"), 5000);
     }, timeout);
 
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
+    proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+    proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
 
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (code) => {
+    proc.on("close", (code: number | null) => {
       clearTimeout(timer);
       const duration = Date.now() - startTime;
-
       if (timedOut) {
         resolve({
           success: false, output: stdout, artifacts: [], duration,
@@ -158,17 +158,14 @@ export async function executeCliTask(
         });
         return;
       }
-
       const success = code === 0;
-      const artifacts: Artifact[] = [];
-
+      const artifacts: Array<{ type: string; name: string; content: string }> = [];
       if (stdout.trim()) {
         artifacts.push({ type: "text", name: "stdout", content: stdout.trim() });
       }
       if (stderr.trim() && !success) {
         artifacts.push({ type: "text", name: "stderr", content: stderr.trim() });
       }
-
       resolve({
         success,
         output: success
@@ -180,7 +177,7 @@ export async function executeCliTask(
       });
     });
 
-    proc.on("error", (err) => {
+    proc.on("error", (err: Error) => {
       clearTimeout(timer);
       resolve({
         success: false, output: "", artifacts: [], duration: Date.now() - startTime,
@@ -195,30 +192,18 @@ export async function executeCliTask(
  * Provider-agnostic: works with Claude Code, Codex, Aider, or any CLI.
  */
 export async function executeViaProvider(
-  provider: CliProvider,
-  task: string,
-  cwd: string
-): Promise<TaskResult> {
+  provider: string, task: string, cwd: string,
+): Promise<CliTaskResult> {
   const config = getProvider(provider);
-
   if (!config.available && config.provider !== "generic") {
     return {
-      success: false,
-      output: "",
-      artifacts: [],
-      duration: 0,
+      success: false, output: "", artifacts: [], duration: 0,
       error: `Provider "${provider}" is not installed. Run "${config.versionCommand}" to check, or install it first.`,
     };
   }
-
-  const args = config.formatArgs(task, cwd);
+  const args = config.formatArgs(task);
   const command = `${config.binary} ${args.map((a) => `"${a.replace(/"/g, '\\"')}"`).join(" ")}`;
-
-  return executeCliTask({
-    command,
-    cwd,
-    timeout: 600000,
-  });
+  return executeCliTask({ command, cwd, timeout: 600000 });
 }
 
 /**
@@ -227,21 +212,21 @@ export async function executeViaProvider(
 export async function executeViaClaudeCode(
   task: string,
   cwd: string,
-  options?: { model?: string }
-): Promise<TaskResult> {
+  options?: { model?: string; quiet?: boolean },
+): Promise<CliTaskResult> {
   const config = getProvider("claude-code");
-  const args = ["--print", task];
-  if (options?.model) args.unshift("--model", options.model);
-
+  const args: string[] = [];
+  if (options?.model) args.push("--model", options.model);
+  if (options?.quiet) args.push("--print");  // Only add --print in quiet mode
+  args.push(task);
   const command = `${config.binary} ${args.map((a) => `"${a.replace(/"/g, '\\"')}"`).join(" ")}`;
-
   return executeCliTask({ command, cwd, timeout: 600000 });
 }
 
 /**
  * Check if a specific CLI provider is available.
  */
-export async function isProviderAvailable(provider: CliProvider): Promise<boolean> {
+export async function isProviderAvailable(provider: string): Promise<boolean> {
   const config = getProvider(provider);
   return checkProviderAvailable(config.versionCommand);
 }

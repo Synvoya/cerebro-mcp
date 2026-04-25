@@ -5,6 +5,25 @@ All notable changes to Cerebro MCP will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-04-26
+
+### Fixed — Shell Escaping
+- Task descriptions with backticks, quotes, and special characters no longer break worker terminals
+- Task text is now written to a temp file and read via cat, never inlined in bash scripts
+
+### Added — Execution Modes
+- **Interactive mode** (new default): Claude Code runs interactively — users see live thinking, tool calls, file reads in the terminal
+- **Quiet mode**: Terminal shows only task description and final result (previous default behavior)
+- Configure via natural language: "quiet mode", "hide execution", "interactive", "show thinking"
+- New executionMode preference in configure_model
+
+### Changed
+- terminal-spawner.ts: Rewritten with temp-file task handling and execution mode support
+- model-config.ts: Added executionMode (interactive/quiet) with natural language parser
+- cli-worker.ts: Removed hardcoded --print flag, added quiet option
+- server.ts: Wired executionMode into configure_model
+- README: Updated configuration tables with execution modes
+
 ## [2.2.0] — 2026-04-15
 
 ### Added — Context Watcher
